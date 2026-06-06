@@ -1,0 +1,16 @@
+.gradle/
+build/
+.quarkus/
+
+*.class
+*.jar
+*.war
+
+.idea/
+*.iml
+*.iws
+*.ipr
+
+out/
+
+.DS_Store

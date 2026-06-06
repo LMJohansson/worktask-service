@@ -1,0 +1,44 @@
+{
+  "namespace": "com.example.worktaskservice.commands",
+  "type": "record",
+  "name": "CreateWorkTask",
+  "fields": [
+    {
+      "name": "workTaskId",
+      "type": {
+        "type": "fixed",
+        "size": 16,
+        "name": "UUID",
+        "logicalType": "uuid"
+      }
+    },
+    {
+      "name": "correlationId",
+      "type": "UUID"
+    },
+    {
+      "name": "type",
+      "type": "string"
+    },
+    {
+      "name": "subjectType",
+      "type": "string"
+    },
+    {
+      "name": "subjectId",
+      "type": "UUID"
+    },
+    {
+      "name": "title",
+      "type": "string"
+    },
+    {
+      "name": "description",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    }
+  ]
+}

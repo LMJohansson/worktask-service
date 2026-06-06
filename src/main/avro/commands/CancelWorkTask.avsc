@@ -1,0 +1,20 @@
+{
+  "namespace": "com.example.worktaskservice.commands",
+  "type": "record",
+  "name": "CancelWorkTask",
+  "fields": [
+    {
+      "name": "workTaskId",
+      "type": {"type": "fixed", "size": 16, "name": "UUID", "logicalType": "uuid"}
+    },
+    {
+      "name": "correlationId",
+      "type": "UUID"
+    },
+    {
+      "name": "reason",
+      "type": ["null", "string"],
+      "default": null
+    }
+  ]
+}

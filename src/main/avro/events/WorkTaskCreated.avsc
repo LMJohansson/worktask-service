@@ -1,0 +1,40 @@
+{
+  "namespace": "com.example.worktaskservice.events",
+  "type": "record",
+  "name": "WorkTaskCreated",
+  "fields": [
+    {
+      "name": "workTaskId",
+      "type": {"type": "fixed", "size": 16, "name": "UUID", "logicalType": "uuid"}
+    },
+    {
+      "name": "correlationId",
+      "type": "UUID"
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-nanos"}
+    },
+    {
+      "name": "type",
+      "type": "string"
+    },
+    {
+      "name": "subjectType",
+      "type": "string"
+    },
+    {
+      "name": "subjectId",
+      "type": "UUID"
+    },
+    {
+      "name": "title",
+      "type": "string"
+    },
+    {
+      "name": "description",
+      "type": ["null", "string"],
+      "default": null
+    }
+  ]
+}

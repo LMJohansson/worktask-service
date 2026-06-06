@@ -1,0 +1,19 @@
+{
+  "namespace": "com.example.worktaskservice.events",
+  "type": "record",
+  "name": "WorkTaskAborted",
+  "fields": [
+    {
+      "name": "workTaskId",
+      "type": {"type": "fixed", "size": 16, "name": "UUID", "logicalType": "uuid"}
+    },
+    {
+      "name": "correlationId",
+      "type": "UUID"
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-nanos"}
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "namespace": "com.example.worktaskservice.commands",
+  "type": "record",
+  "name": "PauseWorkTask",
+  "fields": [
+    {
+      "name": "workTaskId",
+      "type": {"type": "fixed", "size": 16, "name": "UUID", "logicalType": "uuid"}
+    },
+    {
+      "name": "correlationId",
+      "type": "UUID"
+    }
+  ]
+}

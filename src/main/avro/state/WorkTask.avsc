@@ -1,0 +1,53 @@
+{
+  "namespace": "com.example.worktaskservice.state",
+  "type": "record",
+  "name": "WorkTask",
+  "fields": [
+    {
+      "name": "id",
+      "type": {"type": "fixed", "size": 16, "name": "UUID", "logicalType": "uuid"}
+    },
+    {
+      "name": "type",
+      "type": "string"
+    },
+    {
+      "name": "subjectType",
+      "type": "string"
+    },
+    {
+      "name": "subjectId",
+      "type": "UUID"
+    },
+    {
+      "name": "title",
+      "type": "string"
+    },
+    {
+      "name": "description",
+      "type": ["null", "string"],
+      "default": null
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "WorkTaskStatus",
+        "symbols": ["DRAFT", "ASSIGNED", "IN_PROGRESS", "PAUSED", "COMPLETED", "ABORTED", "CANCELLED"]
+      }
+    },
+    {
+      "name": "assigneeId",
+      "type": ["null", "UUID"],
+      "default": null
+    },
+    {
+      "name": "createdAt",
+      "type": {"type": "long", "logicalType": "timestamp-nanos"}
+    },
+    {
+      "name": "updatedAt",
+      "type": {"type": "long", "logicalType": "timestamp-nanos"}
+    }
+  ]
+}
