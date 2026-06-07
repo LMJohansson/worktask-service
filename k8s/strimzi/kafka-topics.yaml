@@ -1,0 +1,59 @@
+# Mirrors the partition counts Quarkus Dev Services creates in dev/test mode
+# (see quarkus.kafka.devservices.topic-partitions.* in application.properties).
+# CR metadata.name must be a valid k8s name (no dots); the real dotted Kafka
+# topic name is carried via spec.topicName.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: work-tasks-worktask-public-worktask-command
+  namespace: worktask
+  labels:
+    strimzi.io/cluster: worktask-kafka
+spec:
+  topicName: work.tasks.worktask.public.worktask.command
+  partitions: 3
+  replicas: 1
+  config:
+    cleanup.policy: delete
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: work-tasks-worktask-public-worktask-event
+  namespace: worktask
+  labels:
+    strimzi.io/cluster: worktask-kafka
+spec:
+  topicName: work.tasks.worktask.public.worktask.event
+  partitions: 3
+  replicas: 1
+  config:
+    cleanup.policy: delete
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: work-tasks-worktask-public-worktask-compact
+  namespace: worktask
+  labels:
+    strimzi.io/cluster: worktask-kafka
+spec:
+  topicName: work.tasks.worktask.public.worktask.compact
+  partitions: 3
+  replicas: 1
+  config:
+    cleanup.policy: compact
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: work-tasks-worktask-private-worktask-dead-letter
+  namespace: worktask
+  labels:
+    strimzi.io/cluster: worktask-kafka
+spec:
+  topicName: work.tasks.worktask.private.worktask.dead-letter
+  partitions: 1
+  replicas: 1
+  config:
+    cleanup.policy: delete

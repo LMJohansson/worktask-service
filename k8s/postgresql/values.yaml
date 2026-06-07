@@ -1,0 +1,16 @@
+# Bitnami PostgreSQL chart overrides for local Minikube development.
+# Credentials/db here must match %minikube.quarkus.datasource.* in application.properties.
+fullnameOverride: worktask-postgresql
+
+auth:
+  username: worktask
+  password: worktask
+  database: worktask
+
+primary:
+  persistence:
+    enabled: false   # ephemeral storage — fast dev cycles, data loss on pod restart is acceptable
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m

@@ -1,0 +1,46 @@
+# Single-node KRaft Kafka cluster for local Minikube development.
+# Requires the Strimzi Kafka Operator to be installed first (see README) —
+# the operator's CRDs (Kafka, KafkaNodePool, KafkaTopic, ...) are cluster-scoped
+# and managed as a one-time prerequisite, not as part of this Skaffold deploy.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: worktask
+  labels:
+    strimzi.io/cluster: worktask-kafka
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: ephemeral
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: worktask-kafka
+  namespace: worktask
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    # `version` intentionally omitted — the operator defaults to the latest Kafka version
+    # it supports. Pin it explicitly (matching `kubectl get kafkaversions`) if you need
+    # a specific broker version.
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

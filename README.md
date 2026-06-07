@@ -249,6 +249,109 @@ shared event-field contracts (`correlationId` propagation, `occurredAt`,
 should follow the same `@Nested`-per-command, `@ParameterizedTest`-over-states
 structure.
 
+### Running in Minikube via Skaffold
+
+For a closer-to-production loop than Dev Services — running the service and
+all its dependencies as real Kubernetes workloads — use [Skaffold](https://skaffold.dev/)
+against a local [Minikube](https://minikube.sigs.k8s.io/) cluster.
+
+#### Prerequisites
+
+- `minikube`, `skaffold`, `helm`, `kubectl`, `docker` (Minikube on the docker
+  driver + docker runtime — see the `--container-runtime=docker` note below)
+- The `quarkus-container-image-docker` and `quarkus-kubernetes` extensions
+  (already declared in `build.gradle.kts`) generate, respectively, a
+  `Dockerfile.jvm` (under `src/main/docker/`, hand-maintained — see its header
+  comment for the build assumptions) and a Deployment/Service manifest
+  (`build/kubernetes/kubernetes.yml`, generated at build time from
+  `quarkus.kubernetes.*`/`quarkus.container-image.*` properties)
+
+#### One-time cluster setup
+
+```bash
+# --container-runtime=docker is required: Skaffold builds the app image into
+# Minikube's own Docker daemon (skaffold.yaml `local.push: false`), so the node's
+# runtime must be Docker for the kubelet to see that image. The Minikube default
+# (containerd) breaks this — Skaffold's `minikube docker-env` probe fails and any
+# image built into Docker is invisible to a containerd kubelet.
+minikube start --cpus=4 --memory=8192 --container-runtime=docker
+
+# Strimzi Kafka Operator — installs cluster-scoped CRDs (Kafka, KafkaTopic, ...).
+# A one-time step per cluster lifetime; intentionally NOT part of `skaffold dev`
+# (re-applying/tearing down CRDs on every iteration is wasteful and racy).
+# watchAnyNamespace=true is required: the operator runs in `kafka` but the Kafka
+# cluster CR lives in `worktask`, and by default the operator only reconciles its
+# own namespace — leaving the CR unreconciled (no bootstrap Service, so the app's
+# wait-for-deps init container hangs on "bad address worktask-kafka-kafka-bootstrap").
+helm repo add strimzi https://strimzi.io/charts/
+helm install strimzi-operator strimzi/strimzi-kafka-operator -n kafka --create-namespace \
+  --set watchAnyNamespace=true
+
+kubectl create namespace worktask
+```
+
+#### Iterating
+
+```bash
+skaffold dev --port-forward
+```
+
+This builds the app image against Minikube's own Docker daemon (no registry
+push needed), deploys the generated app manifest plus the Strimzi `Kafka`/
+`KafkaTopic` custom resources (`k8s/strimzi/`) and the Apicurio Schema Registry
+3.x manifest (`k8s/apicurio/apicurio-registry.yaml` — see its header comment for
+why a hand-written manifest is used instead of the community Helm chart), and
+installs PostgreSQL via the Bitnami Helm chart (`k8s/postgresql/`).
+`--port-forward` exposes the app locally; the `portForward` stanza in
+`skaffold.yaml` pins it to `http://localhost:8080` (the generated Service uses
+port 80, so without the pin Skaffold would assign a random local port). The
+dependency Services (Kafka, PostgreSQL, Apicurio) are also forwarded, on
+auto-assigned local ports printed in Skaffold's output. `skaffold dev` rebuilds
+and redeploys on source changes and streams pod logs.
+
+On a fresh cluster the first `skaffold dev` takes a few minutes: the app's
+`wait-for-deps` init container (configured via `quarkus.kubernetes.init-containers`
+in `application.properties`) holds startup until Kafka, PostgreSQL, and Apicurio
+accept connections, since Kafka Streams and Hibernate both connect eagerly at boot.
+
+The app runs with `QUARKUS_PROFILE=minikube` (set as a Deployment env var by
+`quarkus.kubernetes.env.vars.quarkus-profile`), which disables Dev Services
+and points Kafka/PostgreSQL/Schema-Registry connections at the in-cluster
+Service DNS names — see the `%minikube.*` block in `application.properties`.
+
+#### Smoke-testing
+
+```bash
+curl http://localhost:8080/q/health/ready    # expect "status": "UP" — kafka-streams + datasource checks
+curl http://localhost:8080/graphql -H 'Content-Type: application/json' \
+  -d '{"query":"{ workTasks(page: 0, size: 10) { totalCount items { id } } }"}'
+```
+
+A fresh cluster should report `totalCount: 0`. Driving a command through the
+full pipeline (`CreateWorkTask` → `WorkTaskCreated` event → compact topic →
+read model → GraphQL) requires an Avro+CloudEvents-encoded producer; there is
+no existing test helper for this (the test suite persists directly via
+`PanacheWorkTaskRepository`, bypassing Kafka) — see `CommandAvroMapper`/
+`AvroSerdeFactory`/`CloudEventHeaders` under `infrastructure/kafka/` for the
+serialization conventions to reuse in a throwaway producer.
+
+Useful diagnostics:
+
+```bash
+kubectl get kafka,kafkatopic -n worktask
+kubectl get pods -n worktask
+```
+
+#### Tearing down
+
+```bash
+skaffold delete             # removes the app, Kafka CRs/topics, and Helm releases
+minikube stop               # or: minikube delete
+```
+
+The Strimzi operator and its CRDs persist across `skaffold delete` by design
+(see the one-time setup note above).
+
 ## Project status
 
 Implementation in progress — the core domain model, state machine, Kafka

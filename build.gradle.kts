@@ -22,6 +22,8 @@ dependencies {
     implementation("io.quarkus:quarkus-opentelemetry")
     implementation("io.quarkus:quarkus-smallrye-health")
     implementation("io.quarkus:quarkus-smallrye-graphql")
+    implementation("io.quarkus:quarkus-container-image-docker")
+    implementation("io.quarkus:quarkus-kubernetes")
 
     testImplementation("io.quarkus:quarkus-junit5")
     testImplementation("io.rest-assured:rest-assured")

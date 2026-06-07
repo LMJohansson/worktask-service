@@ -1,0 +1,63 @@
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: worktask-service
+
+build:
+  artifacts:
+    # Quarkus's generated Dockerfile.jvm copies a prebuilt build/quarkus-app/ directory rather
+    # than compiling from source, so a plain `docker build .` from a clean checkout would fail.
+    # Wrap the Gradle build that produces it, then hand off to a normal docker build.
+    #
+    # eval "$(minikube docker-env)": unlike the built-in docker builder, Skaffold does NOT inject
+    # the minikube docker daemon env into a custom build script — but it still inspects minikube's
+    # daemon for the resulting image. Without this, `docker build` targets the host daemon, the
+    # image never lands in minikube, and the build fails with "didn't produce an image with tag".
+    # Point Docker at minikube's daemon so the image is built straight into the node.
+    #
+    # --provenance=false --sbom=false: BuildKit attaches attestations by default, which turn the
+    # output into an OCI manifest list that minikube's classic (overlay2) image store can't load —
+    # the build "succeeds" but the tag never registers. Disabling attestations yields a plain
+    # single-platform image that loads and inspects cleanly.
+    - image: worktask-service
+      custom:
+        buildCommand: eval "$(minikube docker-env)" && ./gradlew quarkusBuild -Dquarkus.package.jar.type=fast-jar && docker build --provenance=false --sbom=false -f src/main/docker/Dockerfile.jvm -t $IMAGE .
+        dependencies:
+          paths:
+            - src/**
+            - build.gradle.kts
+            - gradle.properties
+  local:
+    push: false   # Skaffold builds against Minikube's own Docker daemon; no registry needed
+
+manifests:
+  rawYaml:
+    - build/kubernetes/kubernetes.yml
+    - k8s/namespace.yaml
+    - k8s/strimzi/kafka-cluster.yaml
+    - k8s/strimzi/kafka-topics.yaml
+    # Apicurio Schema Registry 3.x — a hand-written manifest rather than a Helm
+    # chart; see its header comment for why the community chart doesn't work on 3.x.
+    - k8s/apicurio/apicurio-registry.yaml
+
+deploy:
+  kubectl: {}
+  helm:
+    releases:
+      - name: worktask-postgresql
+        remoteChart: oci://registry-1.docker.io/bitnamicharts/postgresql
+        namespace: worktask
+        createNamespace: true
+        valuesFiles:
+          - k8s/postgresql/values.yaml
+
+# Pin the app to a stable local port. The generated Service exposes port 80, so a bare
+# `--port-forward` would otherwise assign a random local port (and the dependency Services
+# still get auto-assigned ones). This makes http://localhost:8080 deterministic for the
+# /graphql and /q/health smoke tests below.
+portForward:
+  - resourceType: service
+    resourceName: worktask-service
+    namespace: worktask
+    port: 80
+    localPort: 8080
