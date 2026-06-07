@@ -25,7 +25,6 @@ public class AvroSerdeFactory {
         return buildSerde();
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private <T extends SpecificRecord> Serde<T> buildSerde() {
         var serializer   = new AvroKafkaSerializer<T>();
         var deserializer = new AvroKafkaDeserializer<T>();
@@ -35,6 +34,6 @@ public class AvroSerdeFactory {
                 "io.apicurio.registry.serde.avro.ReflectAvroDatumProvider");
         serializer.configure(config, false);
         deserializer.configure(config, false);
-        return (Serde<T>) Serdes.serdeFrom(serializer, deserializer);
+        return Serdes.serdeFrom(serializer, deserializer);
     }
 }

@@ -1,10 +1,15 @@
 package com.example.worktaskservice.infrastructure.persistence;
 
+import com.example.worktaskservice.application.port.WorkTaskFilter;
+import com.example.worktaskservice.application.port.WorkTaskPage;
 import com.example.worktaskservice.application.port.WorkTaskRepository;
 import com.example.worktaskservice.domain.model.*;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import io.quarkus.panache.common.Page;
 import jakarta.enterprise.context.ApplicationScoped;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,6 +20,36 @@ public class PanacheWorkTaskRepository
     @Override
     public Optional<WorkTask> find(UUID id) {
         return findByIdOptional(id).map(this::toDomain);
+    }
+
+    @Override
+    public WorkTaskPage findAll(WorkTaskFilter filter, int page, int size) {
+        var clauses = new ArrayList<String>();
+        var params = new HashMap<String, Object>();
+        if (filter.status() != null) {
+            clauses.add("status = :status");
+            params.put("status", filter.status());
+        }
+        if (filter.type() != null) {
+            clauses.add("type = :type");
+            params.put("type", filter.type().value());
+        }
+        if (filter.subjectType() != null) {
+            clauses.add("subjectType = :subjectType");
+            params.put("subjectType", filter.subjectType().value());
+        }
+        if (filter.subjectId() != null) {
+            clauses.add("subjectId = :subjectId");
+            params.put("subjectId", filter.subjectId());
+        }
+        if (filter.assigneeId() != null) {
+            clauses.add("assigneeId = :assigneeId");
+            params.put("assigneeId", filter.assigneeId());
+        }
+
+        var query = (clauses.isEmpty() ? findAll() : find(String.join(" and ", clauses), params))
+                .page(Page.of(page, size));
+        return new WorkTaskPage(query.list().stream().map(this::toDomain).toList(), query.count(), page, size);
     }
 
     @Override

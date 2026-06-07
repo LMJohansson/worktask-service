@@ -31,12 +31,12 @@ Topics follow the convention
 The three operative topics are public (part of the API contract); a fourth,
 private topic exists for operational dead-lettering:
 
-| Purpose            | Topic                                              | Suffix    | Retention          |
-|--------------------|----------------------------------------------------|-----------|--------------------|
-| Inbound commands   | `work.tasks.worktask.public.worktask.command`      | `command` | Delete (short)     |
-| Domain events      | `work.tasks.worktask.public.worktask.event`        | `event`   | Delete (long)      |
-| Materialized state | `work.tasks.worktask.public.worktask.compact`      | `compact` | Compact (infinite) |
-| Dead letter (internal) | `work.tasks.worktask.private.worktask.dead-letter` | —     | —                  |
+| Purpose                | Topic                                              | Suffix    | Retention          |
+|------------------------|----------------------------------------------------|-----------|--------------------|
+| Inbound commands       | `work.tasks.worktask.public.worktask.command`      | `command` | Delete (short)     |
+| Domain events          | `work.tasks.worktask.public.worktask.event`        | `event`   | Delete (long)      |
+| Materialized state     | `work.tasks.worktask.public.worktask.compact`      | `compact` | Compact (infinite) |
+| Dead letter (internal) | `work.tasks.worktask.private.worktask.dead-letter` | —         | —                  |
 
 ### WorkTask domain model
 
@@ -61,17 +61,17 @@ Commands drive a state machine. `Reassign` and `Unassign` are special cases
 of `Assign` — a single `AssignWorkTask` command with a nullable `assigneeId`
 (non-null → `ASSIGNED`, null → `DRAFT`):
 
-| Command                      | Valid from                              | Resulting state |
-|------------------------------|------------------------------------------|-----------------|
-| Create                       | *(none — initial)*                       | `DRAFT`         |
-| Assign (`assigneeId` non-null) | `DRAFT`, `ASSIGNED`, `IN_PROGRESS`, `PAUSED` | `ASSIGNED`  |
-| Assign (`assigneeId` null)   | `ASSIGNED`, `IN_PROGRESS`, `PAUSED`       | `DRAFT`         |
-| Begin                        | `ASSIGNED`                                | `IN_PROGRESS`   |
-| Pause                        | `IN_PROGRESS`                             | `PAUSED`        |
-| Resume                       | `PAUSED`                                  | `IN_PROGRESS`   |
-| Complete                     | `IN_PROGRESS`                             | `COMPLETED`     |
-| Abort                        | `ASSIGNED`, `IN_PROGRESS`, `PAUSED`       | `ABORTED`       |
-| Cancel                       | `DRAFT`, `ASSIGNED`, `IN_PROGRESS`, `PAUSED` | `CANCELLED`  |
+| Command                        | Valid from                                   | Resulting state |
+|--------------------------------|----------------------------------------------|-----------------|
+| Create                         | *(none — initial)*                           | `DRAFT`         |
+| Assign (`assigneeId` non-null) | `DRAFT`, `ASSIGNED`, `IN_PROGRESS`, `PAUSED` | `ASSIGNED`      |
+| Assign (`assigneeId` null)     | `ASSIGNED`, `IN_PROGRESS`, `PAUSED`          | `DRAFT`         |
+| Begin                          | `ASSIGNED`                                   | `IN_PROGRESS`   |
+| Pause                          | `IN_PROGRESS`                                | `PAUSED`        |
+| Resume                         | `PAUSED`                                     | `IN_PROGRESS`   |
+| Complete                       | `IN_PROGRESS`                                | `COMPLETED`     |
+| Abort                          | `ASSIGNED`, `IN_PROGRESS`, `PAUSED`          | `ABORTED`       |
+| Cancel                         | `DRAFT`, `ASSIGNED`, `IN_PROGRESS`, `PAUSED` | `CANCELLED`     |
 
 `COMPLETED`, `ABORTED`, and `CANCELLED` are terminal. The unified `Assign`
 command emits one of three distinct domain events depending on context:
@@ -94,11 +94,9 @@ command emits one of three distinct domain events depending on context:
       │
       ├──► [event topic]    — domain event (result of successful command)
       └──► [compact topic]  — full materialized WorkTask state (same key)
-                               (both writes in one Kafka Streams transaction)
-      │
-      ▼
- DatabaseSink
-      └──► PostgreSQL (read model / query side)
+                 │            (both writes in one Kafka Streams transaction)
+                 ▼
+            DatabaseSinkProcessor ──► PostgreSQL (read model / query side)
 ```
 
 Implemented in `WorkTaskTopologyProducer` using the low-level `Topology` API
@@ -109,6 +107,30 @@ achieved via `processing.guarantee=exactly_once_v2`. Only genuinely
 unparsable (undeserializable) records go to the dead-letter topic — commands
 that fail state-transition validation instead produce a
 `WorkTaskCommandRejected` event on the event topic.
+
+The `DatabaseSinkProcessor` is a second sub-topology in the same `Topology`:
+it consumes the `compact` topic independently (`compact-source`) and
+upserts each materialized `WorkTask` into PostgreSQL via
+`PanacheWorkTaskRepository`, wrapping each write in its own transaction with
+`QuarkusTransaction.requiringNew(...)` (Hibernate ORM needs an active
+transaction, and the Kafka Streams processor thread isn't CDI-managed). This
+keeps the read model — the table the GraphQL query API reads from — in sync
+with the materialized state.
+
+### Query API (GraphQL)
+
+A read-only GraphQL API (`quarkus-smallrye-graphql`) exposes the PostgreSQL
+read model at `/graphql` (GraphQL UI at `/q/graphql-ui` in dev mode):
+
+- `workTask(id: ID!): WorkTask` — look up a single WorkTask by id
+- `workTasks(filter: WorkTaskFilterInput, page: Int, size: Int): WorkTaskPage`
+  — list WorkTasks, optionally filtered (by `status`, `type`, `subjectType`,
+  `subjectId`, `assigneeId`) and paged
+
+Implemented in `infrastructure/graphql` (`WorkTaskGraphQLApi` +
+GraphQL-facing `dto` records), backed by `WorkTaskQueryService` in the
+application layer, which in turn calls the `findAll` query method added to
+the `WorkTaskRepository` port.
 
 ### CloudEvents binding
 
@@ -133,10 +155,13 @@ src/main/java/com/example/worktaskservice/
 │   ├── command/       ← command records (mapped from Avro-generated classes)
 │   ├── event/         ← domain event records
 │   └── exception/
-├── application/       ← use-case orchestration (WorkTaskCommandHandler, ports)
+├── application/       ← use-case orchestration (WorkTaskCommandHandler,
+│                        WorkTaskQueryService, ports)
 └── infrastructure/    ← Quarkus / framework adapters
-    ├── kafka/         ← topology, serde, Avro ⇄ domain mappers
+    ├── kafka/         ← topology (incl. DatabaseSinkProcessor), serde,
+    │                    Avro ⇄ domain mappers
     ├── persistence/   ← JPA entity + Panache repository
+    ├── graphql/       ← GraphQL query API (WorkTaskGraphQLApi + dto records)
     └── config/        ← topic name configuration
 ```
 
@@ -149,10 +174,10 @@ state are never hand-written as DTOs; only the pure domain records are.
 
 Type conventions:
 
-| Logical type | Avro encoding |
-|---|---|
-| UUID | `{"type": "fixed", "size": 16, "logicalType": "uuid", "name": "UUID"}` (16-byte binary) |
-| Timestamp | `{"type": "long", "logicalType": "timestamp-nanos"}` (epoch nanoseconds) |
+| Logical type | Avro encoding                                                                           |
+|--------------|-----------------------------------------------------------------------------------------|
+| UUID         | `{"type": "fixed", "size": 16, "logicalType": "uuid", "name": "UUID"}` (16-byte binary) |
+| Timestamp    | `{"type": "long", "logicalType": "timestamp-nanos"}` (epoch nanoseconds)                |
 
 ### Schema Registry
 

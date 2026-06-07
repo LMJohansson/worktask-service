@@ -12,8 +12,8 @@ public final class WorkTask {
     private final UUID id;
     private final WorkTaskType type;
     private final Subject subject;
-    private String title;
-    private String description;
+    private final String title;
+    private final String description;
     private final int priority;
     private final Instant deadline;
     private WorkTaskStatus status;

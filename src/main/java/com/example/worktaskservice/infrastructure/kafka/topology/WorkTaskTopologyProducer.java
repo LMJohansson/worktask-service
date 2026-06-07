@@ -10,6 +10,7 @@ import com.example.worktaskservice.infrastructure.kafka.mapper.CommandAvroMapper
 import com.example.worktaskservice.infrastructure.kafka.mapper.EventAvroMapper;
 import com.example.worktaskservice.infrastructure.kafka.serde.AvroSerdeFactory;
 import com.example.worktaskservice.infrastructure.persistence.PanacheWorkTaskRepository;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
@@ -30,10 +31,12 @@ import java.util.UUID;
 public class WorkTaskTopologyProducer {
 
     private static final Logger LOG = Logger.getLogger(WorkTaskTopologyProducer.class);
-    private static final String STORE_NAME   = "worktask-store";
-    private static final String EVENT_SINK   = "event-sink";
-    private static final String COMPACT_SINK = "compact-sink";
-    private static final String DLT_SINK     = "dead-letter-sink";
+    private static final String STORE_NAME      = "worktask-store";
+    private static final String EVENT_SINK      = "event-sink";
+    private static final String COMPACT_SINK    = "compact-sink";
+    private static final String DLT_SINK        = "dead-letter-sink";
+    private static final String COMPACT_SOURCE  = "compact-source";
+    private static final String DATABASE_SINK   = "database-sink";
 
     @Inject TopicConfig topics;
     @Inject EventAvroMapper eventMapper;
@@ -42,45 +45,55 @@ public class WorkTaskTopologyProducer {
 
     @Produces
     public Topology topology() {
-        var commandSerde = serdeFactory.commandSerde();
-        var eventSerde   = serdeFactory.commandSerde();
-        var stateSerde   = serdeFactory.workTaskStateSerde();
-
         Topology topology = new Topology();
 
-        topology.addSource("command-source",
+        try (var commandSerde = serdeFactory.commandSerde();
+             var eventSerde = serdeFactory.commandSerde();
+             var stateSerde = serdeFactory.workTaskStateSerde()) {
+
+            topology.addSource("command-source",
+                    Serdes.String().deserializer(),
+                    commandSerde.deserializer(),
+                    topics.commandTopic());
+
+            topology.addProcessor("state-transition",
+                    StateTransitionProcessor::new,
+                    "command-source");
+
+            topology.addStateStore(
+                    Stores.keyValueStoreBuilder(
+                            Stores.persistentKeyValueStore(STORE_NAME),
+                            Serdes.String(),
+                            stateSerde),
+                    "state-transition");
+
+            topology.addSink(EVENT_SINK,
+                    topics.eventTopic(),
+                    Serdes.String().serializer(),
+                    eventSerde.serializer(),
+                    "state-transition");
+
+            topology.addSink(COMPACT_SINK,
+                    topics.compactTopic(),
+                    Serdes.String().serializer(),
+                    stateSerde.serializer(),
+                    "state-transition");
+
+            topology.addSink(DLT_SINK,
+                    topics.deadLetterTopic(),
+                    Serdes.String().serializer(),
+                    commandSerde.serializer(),
+                    "state-transition");
+
+            topology.addSource(COMPACT_SOURCE,
                 Serdes.String().deserializer(),
-                commandSerde.deserializer(),
-                topics.commandTopic());
+                stateSerde.deserializer(),
+                topics.compactTopic());
 
-        topology.addProcessor("state-transition",
-                () -> new StateTransitionProcessor(),
-                "command-source");
-
-        topology.addStateStore(
-                Stores.keyValueStoreBuilder(
-                        Stores.persistentKeyValueStore(STORE_NAME),
-                        Serdes.String(),
-                        stateSerde),
-                "state-transition");
-
-        topology.addSink(EVENT_SINK,
-                topics.eventTopic(),
-                Serdes.String().serializer(),
-                eventSerde.serializer(),
-                "state-transition");
-
-        topology.addSink(COMPACT_SINK,
-                topics.compactTopic(),
-                Serdes.String().serializer(),
-                stateSerde.serializer(),
-                "state-transition");
-
-        topology.addSink(DLT_SINK,
-                topics.deadLetterTopic(),
-                Serdes.String().serializer(),
-                commandSerde.serializer(),
-                "state-transition");
+            topology.addProcessor(DATABASE_SINK,
+                DatabaseSinkProcessor::new,
+                COMPACT_SOURCE);
+        }
 
         return topology;
     }
@@ -92,7 +105,6 @@ public class WorkTaskTopologyProducer {
         private final CommandAvroMapper commandMapper = new CommandAvroMapper();
 
         @Override
-        @SuppressWarnings("unchecked")
         public void init(ProcessorContext<String, SpecificRecord> context) {
             this.context = context;
             this.store = context.getStateStore(STORE_NAME);
@@ -169,7 +181,7 @@ public class WorkTaskTopologyProducer {
         private WorkTask loadOrNull(String key) {
             var state = store.get(key);
             if (state == null) return null;
-            return toWorkTask(state);
+            return eventMapper.toDomain(state);
         }
 
         private WorkTask reconstitute(WorkTaskCreatedEvent e, Instant now) {
@@ -179,18 +191,18 @@ public class WorkTaskTopologyProducer {
                     com.example.worktaskservice.domain.model.WorkTaskStatus.DRAFT,
                     null, now, now);
         }
+    }
 
-        private WorkTask toWorkTask(com.example.worktaskservice.state.WorkTask s) {
-            return WorkTask.reconstitute(
-                    s.getId(),
-                    new com.example.worktaskservice.domain.model.WorkTaskType(s.getType()),
-                    new com.example.worktaskservice.domain.model.Subject(
-                            new com.example.worktaskservice.domain.model.SubjectType(s.getSubjectType()),
-                            s.getSubjectId()),
-                    s.getTitle(), s.getDescription(), s.getPriority(), s.getDeadline(),
-                    com.example.worktaskservice.domain.model.WorkTaskStatus.valueOf(s.getStatus().name()),
-                    s.getAssigneeId(),
-                    s.getCreatedAt(), s.getUpdatedAt());
+    private class DatabaseSinkProcessor
+            implements Processor<String, com.example.worktaskservice.state.WorkTask, Void, Void> {
+
+        @Override
+        public void process(Record<String, com.example.worktaskservice.state.WorkTask> record) {
+            if (record.value() == null) {
+                return;
+            }
+            WorkTask task = eventMapper.toDomain(record.value());
+            QuarkusTransaction.requiringNew().run(() -> repository.save(task));
         }
     }
 }

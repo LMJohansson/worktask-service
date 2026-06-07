@@ -46,6 +46,19 @@ public class EventAvroMapper {
         return avro;
     }
 
+    public WorkTask toDomain(com.example.worktaskservice.state.WorkTask state) {
+        return WorkTask.reconstitute(
+                state.getId(),
+                new com.example.worktaskservice.domain.model.WorkTaskType(state.getType()),
+                new com.example.worktaskservice.domain.model.Subject(
+                        new com.example.worktaskservice.domain.model.SubjectType(state.getSubjectType()),
+                        state.getSubjectId()),
+                state.getTitle(), state.getDescription(), state.getPriority(), state.getDeadline(),
+                com.example.worktaskservice.domain.model.WorkTaskStatus.valueOf(state.getStatus().name()),
+                state.getAssigneeId(),
+                state.getCreatedAt(), state.getUpdatedAt());
+    }
+
     private SpecificRecord toAvroRecord(WorkTaskEvent event) {
         return switch (event) {
             case WorkTaskCreatedEvent e -> {

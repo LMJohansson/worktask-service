@@ -78,17 +78,17 @@ Commands drive a state machine. `Reassign` and `Unassign` are special cases of `
 
 Valid transitions:
 
-| Command  | Valid from                            | Resulting state |
-|----------|---------------------------------------|-----------------|
-| Create   | (none — initial)                      | DRAFT           |
-| Assign (assigneeId non-null) | DRAFT, ASSIGNED, IN_PROGRESS, PAUSED | ASSIGNED |
-| Assign (assigneeId null)     | ASSIGNED, IN_PROGRESS, PAUSED        | DRAFT    |
-| Begin    | ASSIGNED                              | IN_PROGRESS     |
-| Pause    | IN_PROGRESS                           | PAUSED          |
-| Resume   | PAUSED                                | IN_PROGRESS     |
-| Complete | IN_PROGRESS                           | COMPLETED       |
-| Abort    | ASSIGNED, IN_PROGRESS, PAUSED         | ABORTED         |
-| Cancel   | DRAFT, ASSIGNED, IN_PROGRESS, PAUSED  | CANCELLED       |
+| Command                      | Valid from                           | Resulting state |
+|------------------------------|--------------------------------------|-----------------|
+| Create                       | (none — initial)                     | DRAFT           |
+| Assign (assigneeId non-null) | DRAFT, ASSIGNED, IN_PROGRESS, PAUSED | ASSIGNED        |
+| Assign (assigneeId null)     | ASSIGNED, IN_PROGRESS, PAUSED        | DRAFT           |
+| Begin                        | ASSIGNED                             | IN_PROGRESS     |
+| Pause                        | IN_PROGRESS                          | PAUSED          |
+| Resume                       | PAUSED                               | IN_PROGRESS     |
+| Complete                     | IN_PROGRESS                          | COMPLETED       |
+| Abort                        | ASSIGNED, IN_PROGRESS, PAUSED        | ABORTED         |
+| Cancel                       | DRAFT, ASSIGNED, IN_PROGRESS, PAUSED | CANCELLED       |
 
 Terminal states: `COMPLETED`, `ABORTED`, `CANCELLED`.
 
@@ -109,14 +109,16 @@ Three separate domain events are emitted from the unified Assign command: `WorkT
       │
       ├──► [event topic]    — domain event (result of successful command)
       └──► [compact topic]  — full materialized WorkTask state (same key)
-                               (both writes in one Kafka Streams transaction)
-      │
-      ▼
- DatabaseSink (processor or separate consumer)
-      └──► persistent database (read model / query side)
+                 │            (both writes in one Kafka Streams transaction)
+                 ▼
+            DatabaseSinkProcessor ──► persistent database (read model / query side)
 ```
 
 Atomicity between the `event` and `compact` topics is achieved via Kafka Streams exactly-once semantics — configure `processing.guarantee=exactly_once_v2`. The KeyValueStore is the authoritative in-flight state between commands.
+
+`DatabaseSinkProcessor` is implemented as a second source/processor pair in the same `Topology` (`compact-source` → `database-sink`), independently consuming the `compact` topic and upserting each materialized `WorkTask` into PostgreSQL via `WorkTaskRepository` (`PanacheWorkTaskRepository`). Each write runs in its own transaction via `QuarkusTransaction.requiringNew(...)`, since Hibernate ORM/Panache requires an active transaction and the Kafka Streams processor thread is not CDI-managed.
+
+A read-only **GraphQL query API** (`quarkus-smallrye-graphql`, exposed at `/graphql`) sits on top of this read model — see `infrastructure/graphql/` in the package structure below.
 
 Only unparsable (undeserializable) messages go to the dead-letter topic. Invalid commands that fail state-transition validation produce a rejection event on the event topic instead.
 
@@ -131,19 +133,19 @@ Only unparsable (undeserializable) messages go to the dead-letter topic. Invalid
 
 All Kafka records (event topic + compact topic) use the **Kafka Protocol Binding for CloudEvents 1.0, binary content mode**: the record value is raw Avro bytes and all CloudEvents attributes are Kafka record headers with the `ce_` prefix.
 
-| Kafka Header | Value / convention |
-|---|---|
-| `ce_specversion` | `1.0` |
-| `ce_type` | `com.example.worktaskservice.worktask.<verb>.v1` |
-| `ce_source` | `/worktaskservice` |
-| `ce_id` | UUID v4 (per-event; distinct from WorkTask ID) |
-| `ce_time` | RFC 3339 timestamp |
-| `ce_subject` | `{subjectType}/{subjectId}` — e.g. `billing.invoices:payment/invoice/550e8400-…` |
-| `ce_datacontenttype` | `application/avro` |
-| `ce_dataschema` | `{SCHEMA_REGISTRY_URL}/apis/registry/v2/groups/default/artifacts/{avro.schema.fullName}` |
-| `ce_partitionkey` | WorkTask ID (UUID string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the Kafka record key |
-| `ce_traceparent` | W3C Trace Context — [Distributed Tracing extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/distributed-tracing.md); propagated from inbound command |
-| `ce_tracestate` | W3C Trace Context — Distributed Tracing extension; propagated from inbound command (if present) |
+| Kafka Header         | Value / convention                                                                                                                                                                |
+|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ce_specversion`     | `1.0`                                                                                                                                                                             |
+| `ce_type`            | `com.example.worktaskservice.worktask.<verb>.v1`                                                                                                                                  |
+| `ce_source`          | `/worktaskservice`                                                                                                                                                                |
+| `ce_id`              | UUID v4 (per-event; distinct from WorkTask ID)                                                                                                                                    |
+| `ce_time`            | RFC 3339 timestamp                                                                                                                                                                |
+| `ce_subject`         | `{subjectType}/{subjectId}` — e.g. `billing.invoices:payment/invoice/550e8400-…`                                                                                                  |
+| `ce_datacontenttype` | `application/avro`                                                                                                                                                                |
+| `ce_dataschema`      | `{SCHEMA_REGISTRY_URL}/apis/registry/v2/groups/default/artifacts/{avro.schema.fullName}`                                                                                          |
+| `ce_partitionkey`    | WorkTask ID (UUID string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the Kafka record key          |
+| `ce_traceparent`     | W3C Trace Context — [Distributed Tracing extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/distributed-tracing.md); propagated from inbound command |
+| `ce_tracestate`      | W3C Trace Context — Distributed Tracing extension; propagated from inbound command (if present)                                                                                   |
 
 Inbound command records carry the same `ce_` headers. The topology extracts `ce_traceparent`/`ce_tracestate` to restore OTel context before processing. Use OTel semantic conventions for span and metric naming (`messaging.*`, `db.*`).
 
@@ -153,10 +155,10 @@ All Kafka message schemas are `.avsc` files under `src/main/avro/`. Java classes
 
 #### Type conventions
 
-| Logical type | Avro encoding |
-|---|---|
-| UUID | `{"type": "fixed", "size": 16, "logicalType": "uuid", "name": "UUID"}` — 16-byte binary |
-| Timestamp | `{"type": "long", "logicalType": "timestamp-nanos"}` — epoch nanoseconds |
+| Logical type | Avro encoding                                                                           |
+|--------------|-----------------------------------------------------------------------------------------|
+| UUID         | `{"type": "fixed", "size": 16, "logicalType": "uuid", "name": "UUID"}` — 16-byte binary |
+| Timestamp    | `{"type": "long", "logicalType": "timestamp-nanos"}` — epoch nanoseconds                |
 
 Define the `UUID` fixed type inline on first use within each schema file; reference it by name (`UUID`) for subsequent uses in the same schema. Nullable UUIDs: `["null", <UUID-type>]`.
 
@@ -218,21 +220,31 @@ src/main/java/com/example/worktaskservice/
 │
 ├── application/                     ← use-case orchestration
 │   ├── WorkTaskCommandHandler.java
+│   ├── WorkTaskQueryService.java    ← query-side orchestration; backs the GraphQL API
 │   └── port/
-│       ├── WorkTaskRepository.java       ← outbound port (interface)
+│       ├── WorkTaskRepository.java       ← outbound port (interface): find, findAll, save
+│       ├── WorkTaskFilter.java            ← record: nullable status/type/subjectType/subjectId/assigneeId
+│       ├── WorkTaskPage.java              ← record: items + totalCount + page + size
 │       └── WorkTaskEventPublisher.java   ← outbound port (interface)
 │
 └── infrastructure/                  ← Quarkus / framework adapters
     ├── kafka/
     │   ├── topology/
-    │   │   └── WorkTaskTopologyProducer.java  ← @Produces Topology bean
+    │   │   └── WorkTaskTopologyProducer.java  ← @Produces Topology bean;
+    │   │                                         StateTransitionProcessor + DatabaseSinkProcessor
     │   ├── serde/
     │   └── mapper/
     │       ├── CommandAvroMapper.java   ← Avro SpecificRecord → domain command; reads CE trace headers
-    │       └── EventAvroMapper.java     ← domain event → Avro SpecificRecord; builds ce_ headers
+    │       └── EventAvroMapper.java     ← domain event ⇄ Avro SpecificRecord (incl. state ⇄ domain); builds ce_ headers
     ├── persistence/
     │   ├── WorkTaskEntity.java      ← JPA entity
-    │   └── PanacheWorkTaskRepository.java
+    │   └── PanacheWorkTaskRepository.java   ← implements find/findAll/save (dynamic Panache queries for findAll)
+    ├── graphql/
+    │   ├── WorkTaskGraphQLApi.java  ← @GraphQLApi: workTask(id), workTasks(filter, page, size)
+    │   └── dto/
+    │       ├── WorkTaskDto.java         ← GraphQL output type, mapped from domain WorkTask
+    │       ├── WorkTaskFilterInput.java ← GraphQL input type
+    │       └── WorkTaskPageDto.java     ← GraphQL output type (paged list + totalCount)
     └── config/
         └── TopicConfig.java         ← topic name constants / @ConfigProperty
 ```
@@ -248,6 +260,7 @@ implementation("io.quarkus:quarkus-hibernate-orm-panache")
 implementation("io.quarkus:quarkus-jdbc-postgresql")
 implementation("io.quarkus:quarkus-opentelemetry")
 implementation("io.quarkus:quarkus-smallrye-health")
+implementation("io.quarkus:quarkus-smallrye-graphql")           // GraphQL query API over the read model (/graphql, /q/graphql-ui)
 ```
 
 Quarkus Dev Services auto-provisions Kafka, PostgreSQL, and Apicurio Schema Registry in dev and test mode — no manual Docker Compose setup required.

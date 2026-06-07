@@ -7,5 +7,6 @@ import java.util.UUID;
 
 public interface WorkTaskRepository {
     Optional<WorkTask> find(UUID id);
+    WorkTaskPage findAll(WorkTaskFilter filter, int page, int size);
     void save(WorkTask workTask);
 }

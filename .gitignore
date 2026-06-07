@@ -1,6 +1,7 @@
 .gradle/
 build/
 .quarkus/
+.claude/
 
 *.class
 *.jar
