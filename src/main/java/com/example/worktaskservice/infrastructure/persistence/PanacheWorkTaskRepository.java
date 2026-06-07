@@ -26,6 +26,8 @@ public class PanacheWorkTaskRepository
         entity.subjectId   = task.subject().id();
         entity.title       = task.title();
         entity.description = task.description();
+        entity.priority    = task.priority();
+        entity.deadline    = task.deadline();
         entity.status      = task.status();
         entity.assigneeId  = task.assigneeId();
         entity.createdAt   = task.createdAt();
@@ -38,7 +40,7 @@ public class PanacheWorkTaskRepository
                 e.id,
                 new WorkTaskType(e.type),
                 new Subject(new SubjectType(e.subjectType), e.subjectId),
-                e.title, e.description, e.status, e.assigneeId,
+                e.title, e.description, e.priority, e.deadline, e.status, e.assigneeId,
                 e.createdAt, e.updatedAt);
     }
 }

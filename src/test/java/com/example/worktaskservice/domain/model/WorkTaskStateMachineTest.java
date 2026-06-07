@@ -24,7 +24,7 @@ class WorkTaskStateMachineTest {
 
     private WorkTask taskInState(WorkTaskStatus status) {
         UUID assigneeId = status == WorkTaskStatus.DRAFT ? null : ASSIGNEE;
-        return WorkTask.reconstitute(ID, TYPE, SUBJECT, "title", null,
+        return WorkTask.reconstitute(ID, TYPE, SUBJECT, "title", null, 1, NOW.plusSeconds(3600),
                 status, assigneeId, NOW, NOW);
     }
 
@@ -35,7 +35,8 @@ class WorkTaskStateMachineTest {
     @Nested class Create {
 
         @Test void producesWorkTaskCreatedEvent() {
-            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, "My Task", "desc");
+            Instant deadline = NOW.plusSeconds(3600);
+            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, "My Task", "desc", 5, deadline);
             WorkTaskCreatedEvent event = WorkTask.create(cmd, NOW);
 
             assertInstanceOf(WorkTaskCreatedEvent.class, event);
@@ -46,10 +47,12 @@ class WorkTaskStateMachineTest {
             assertEquals(SUBJECT, event.subject());
             assertEquals("My Task", event.title());
             assertEquals("desc",    event.description());
+            assertEquals(5,        event.priority());
+            assertEquals(deadline, event.deadline());
         }
 
         @Test void applyCreateOnExistingTaskThrows() {
-            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, "x", null);
+            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, "x", null, 0, null);
             var task = taskInState(WorkTaskStatus.DRAFT);
 
             var ex = assertThrows(InvalidStateTransitionException.class,

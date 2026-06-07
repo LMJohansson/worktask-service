@@ -37,6 +37,8 @@ public class EventAvroMapper {
         avro.setSubjectId(toFixed(task.subject().id()));
         avro.setTitle(task.title());
         avro.setDescription(task.description());
+        avro.setPriority(task.priority());
+        avro.setDeadline(task.deadline());
         avro.setStatus(WorkTaskStatus.valueOf(task.status().name()));
         avro.setAssigneeId(task.assigneeId() != null ? toFixed(task.assigneeId()) : null);
         avro.setCreatedAt(toNanos(task.createdAt()));
@@ -56,6 +58,8 @@ public class EventAvroMapper {
                 avro.setSubjectId(toFixed(e.subject().id()));
                 avro.setTitle(e.title());
                 avro.setDescription(e.description());
+                avro.setPriority(e.priority());
+                avro.setDeadline(e.deadline());
                 yield avro;
             }
             case WorkTaskAssignedEvent e -> {

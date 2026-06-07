@@ -1,0 +1,732 @@
+asyncapi: 3.1.0
+
+info:
+  title: WorkTask Service API
+  version: 1.0.0
+  description: |
+    Event-driven public API of the **WorkTask Service** — a Kafka Streams-based
+    service for managing Work Tasks, built using Event Driven Architecture (EDA)
+    and Domain Driven Design (DDD).
+
+    External clients **send commands** to drive a WorkTask through its lifecycle
+    state machine, and **receive domain events** and a **materialized state**
+    stream describing the result of each transition.
+
+    All record values are raw Avro bytes (binary content mode). All CloudEvents
+    1.0 attributes are carried as `ce_`-prefixed Kafka record headers per the
+    CloudEvents Kafka Protocol Binding. See `cloudEventsHeaders` in
+    `components.schemas` for the full header contract.
+  license:
+    name: 0BSD
+    url: https://spdx.org/licenses/0BSD.html
+
+defaultContentType: application/avro
+
+servers:
+  development:
+    host: localhost:9092
+    protocol: kafka
+    description: |
+      Local development broker, auto-provisioned by Quarkus Dev Services
+      (along with PostgreSQL and an Apicurio Schema Registry instance) when
+      running `./gradlew quarkusDev` or the test suite — no manual Docker
+      Compose setup required.
+
+channels:
+  workTaskCommand:
+    address: work.tasks.worktask.public.worktask.command
+    title: WorkTask Commands
+    description: |
+      Inbound commands that drive the WorkTask state machine. Public topic,
+      short (delete) retention. Partitioned and keyed by WorkTask ID (UUID v7,
+      string-encoded).
+    messages:
+      createWorkTask:
+        $ref: '#/components/messages/createWorkTask'
+      assignWorkTask:
+        $ref: '#/components/messages/assignWorkTask'
+      beginWorkTask:
+        $ref: '#/components/messages/beginWorkTask'
+      pauseWorkTask:
+        $ref: '#/components/messages/pauseWorkTask'
+      resumeWorkTask:
+        $ref: '#/components/messages/resumeWorkTask'
+      completeWorkTask:
+        $ref: '#/components/messages/completeWorkTask'
+      abortWorkTask:
+        $ref: '#/components/messages/abortWorkTask'
+      cancelWorkTask:
+        $ref: '#/components/messages/cancelWorkTask'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+
+  workTaskEvent:
+    address: work.tasks.worktask.public.worktask.event
+    title: WorkTask Domain Events
+    description: |
+      Domain events emitted as the result of successfully (or unsuccessfully —
+      see `workTaskCommandRejected`) processing a command. Public topic, long
+      (delete) retention. Partitioned and keyed by WorkTask ID, matching the
+      command that produced each event. Written atomically with the
+      corresponding materialized-state record via Kafka Streams exactly-once
+      semantics (`processing.guarantee=exactly_once_v2`).
+    messages:
+      workTaskCreated:
+        $ref: '#/components/messages/workTaskCreated'
+      workTaskAssigned:
+        $ref: '#/components/messages/workTaskAssigned'
+      workTaskReassigned:
+        $ref: '#/components/messages/workTaskReassigned'
+      workTaskUnassigned:
+        $ref: '#/components/messages/workTaskUnassigned'
+      workTaskBegun:
+        $ref: '#/components/messages/workTaskBegun'
+      workTaskPaused:
+        $ref: '#/components/messages/workTaskPaused'
+      workTaskResumed:
+        $ref: '#/components/messages/workTaskResumed'
+      workTaskCompleted:
+        $ref: '#/components/messages/workTaskCompleted'
+      workTaskAborted:
+        $ref: '#/components/messages/workTaskAborted'
+      workTaskCancelled:
+        $ref: '#/components/messages/workTaskCancelled'
+      workTaskCommandRejected:
+        $ref: '#/components/messages/workTaskCommandRejected'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 2592000000
+
+  workTaskCompact:
+    address: work.tasks.worktask.public.worktask.compact
+    title: WorkTask Materialized State
+    description: |
+      Full materialized WorkTask state, one record per WorkTask ID (log
+      compacted, infinite retention) — the read-side "current state" stream,
+      written in the same Kafka Streams transaction as the corresponding
+      domain event. Public topic. Partitioned and keyed by WorkTask ID,
+      matching the `event` topic.
+    messages:
+      workTaskState:
+        $ref: '#/components/messages/workTaskState'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [compact]
+
+  workTaskDeadLetter:
+    address: work.tasks.worktask.private.worktask.dead-letter
+    title: WorkTask Dead Letter (internal)
+    description: |
+      **Internal/private topic — not part of the public API contract.**
+      Receives inbound command records that could not be deserialized
+      (unparsable messages only; commands that fail state-transition
+      validation instead produce a `WorkTaskCommandRejected` domain event on
+      the public `event` topic). Documented here for operational completeness.
+    x-internal: true
+    messages:
+      unparsableMessage:
+        $ref: '#/components/messages/unparsableMessage'
+    bindings:
+      kafka:
+        partitions: 1
+
+operations:
+  sendWorkTaskCommand:
+    action: send
+    title: Send a WorkTask command
+    summary: External clients publish commands to drive the WorkTask lifecycle.
+    channel:
+      $ref: '#/channels/workTaskCommand'
+    messages:
+      - $ref: '#/channels/workTaskCommand/messages/createWorkTask'
+      - $ref: '#/channels/workTaskCommand/messages/assignWorkTask'
+      - $ref: '#/channels/workTaskCommand/messages/beginWorkTask'
+      - $ref: '#/channels/workTaskCommand/messages/pauseWorkTask'
+      - $ref: '#/channels/workTaskCommand/messages/resumeWorkTask'
+      - $ref: '#/channels/workTaskCommand/messages/completeWorkTask'
+      - $ref: '#/channels/workTaskCommand/messages/abortWorkTask'
+      - $ref: '#/channels/workTaskCommand/messages/cancelWorkTask'
+
+  receiveWorkTaskEvent:
+    action: receive
+    title: Receive WorkTask domain events
+    summary: Clients subscribe to the outcome of each processed command.
+    channel:
+      $ref: '#/channels/workTaskEvent'
+    messages:
+      - $ref: '#/channels/workTaskEvent/messages/workTaskCreated'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskAssigned'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskReassigned'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskUnassigned'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskBegun'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskPaused'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskResumed'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskCompleted'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskAborted'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskCancelled'
+      - $ref: '#/channels/workTaskEvent/messages/workTaskCommandRejected'
+
+  receiveWorkTaskCompactState:
+    action: receive
+    title: Receive WorkTask materialized state
+    summary: Clients subscribe to the full current-state read model per WorkTask.
+    channel:
+      $ref: '#/channels/workTaskCompact'
+    messages:
+      - $ref: '#/channels/workTaskCompact/messages/workTaskState'
+
+components:
+  messages:
+
+    # ---------------------------------------------------------------------
+    # Commands
+    # ---------------------------------------------------------------------
+
+    createWorkTask:
+      name: CreateWorkTask
+      title: Create WorkTask
+      summary: Create a new WorkTask in DRAFT state.
+      description: |
+        Valid from: *(none — initial)*. Resulting state: `DRAFT`.
+        Produces a `WorkTaskCreated` event. `ce_type`:
+        `com.example.worktaskservice.worktask.create.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/commands/CreateWorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    assignWorkTask:
+      name: AssignWorkTask
+      title: Assign / Reassign / Unassign WorkTask
+      summary: Unified command for assign, reassign, and unassign via a nullable assigneeId.
+      description: |
+        - non-null `assigneeId`: valid from `DRAFT`, `ASSIGNED`, `IN_PROGRESS`, `PAUSED` → resulting state `ASSIGNED`
+          (produces `WorkTaskAssigned` from `DRAFT`, otherwise `WorkTaskReassigned`)
+        - null `assigneeId` (unassign): valid from `ASSIGNED`, `IN_PROGRESS`, `PAUSED` → resulting state `DRAFT`
+          (produces `WorkTaskUnassigned`)
+
+        `ce_type`: `com.example.worktaskservice.worktask.assign.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/commands/AssignWorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    beginWorkTask:
+      name: BeginWorkTask
+      title: Begin WorkTask
+      summary: Start work on an assigned WorkTask.
+      description: |
+        Valid from: `ASSIGNED`. Resulting state: `IN_PROGRESS`.
+        Produces a `WorkTaskBegun` event. `ce_type`:
+        `com.example.worktaskservice.worktask.begin.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/commands/BeginWorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    pauseWorkTask:
+      name: PauseWorkTask
+      title: Pause WorkTask
+      summary: Pause an in-progress WorkTask.
+      description: |
+        Valid from: `IN_PROGRESS`. Resulting state: `PAUSED`.
+        Produces a `WorkTaskPaused` event. `ce_type`:
+        `com.example.worktaskservice.worktask.pause.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/commands/PauseWorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    resumeWorkTask:
+      name: ResumeWorkTask
+      title: Resume WorkTask
+      summary: Resume a paused WorkTask.
+      description: |
+        Valid from: `PAUSED`. Resulting state: `IN_PROGRESS`.
+        Produces a `WorkTaskResumed` event. `ce_type`:
+        `com.example.worktaskservice.worktask.resume.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/commands/ResumeWorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    completeWorkTask:
+      name: CompleteWorkTask
+      title: Complete WorkTask
+      summary: Mark an in-progress WorkTask as completed (terminal).
+      description: |
+        Valid from: `IN_PROGRESS`. Resulting state: `COMPLETED` (terminal).
+        Produces a `WorkTaskCompleted` event. `ce_type`:
+        `com.example.worktaskservice.worktask.complete.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/commands/CompleteWorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    abortWorkTask:
+      name: AbortWorkTask
+      title: Abort WorkTask
+      summary: Abort an active WorkTask (terminal), with an optional reason.
+      description: |
+        Valid from: `ASSIGNED`, `IN_PROGRESS`, `PAUSED`. Resulting state:
+        `ABORTED` (terminal). Carries an optional `reason`. Produces a
+        `WorkTaskAborted` event. `ce_type`:
+        `com.example.worktaskservice.worktask.abort.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/commands/AbortWorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    cancelWorkTask:
+      name: CancelWorkTask
+      title: Cancel WorkTask
+      summary: Cancel a non-terminal WorkTask (terminal), with an optional reason.
+      description: |
+        Valid from: `DRAFT`, `ASSIGNED`, `IN_PROGRESS`, `PAUSED`. Resulting
+        state: `CANCELLED` (terminal). Carries an optional `reason`. Produces
+        a `WorkTaskCancelled` event. `ce_type`:
+        `com.example.worktaskservice.worktask.cancel.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/commands/CancelWorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    # ---------------------------------------------------------------------
+    # Domain Events
+    # ---------------------------------------------------------------------
+
+    workTaskCreated:
+      name: WorkTaskCreated
+      title: WorkTask Created
+      summary: A new WorkTask was created in DRAFT state.
+      description: |
+        Emitted from `CreateWorkTask`. Carries the immutable creation-time
+        properties: `type`, `subjectType`, `subjectId`, `title`, `description`,
+        `priority`, `deadline`. `ce_type`:
+        `com.example.worktaskservice.worktask.created.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskCreated.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskAssigned:
+      name: WorkTaskAssigned
+      title: WorkTask Assigned
+      summary: A WorkTask transitioned from DRAFT to ASSIGNED with a new assignee.
+      description: |
+        Emitted from `AssignWorkTask` (non-null `assigneeId`) when the WorkTask
+        was previously unassigned (`DRAFT`). `ce_type`:
+        `com.example.worktaskservice.worktask.assigned.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskAssigned.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskReassigned:
+      name: WorkTaskReassigned
+      title: WorkTask Reassigned
+      summary: An already-assigned WorkTask was reassigned to a new assignee.
+      description: |
+        Emitted from `AssignWorkTask` (non-null `assigneeId`) when the WorkTask
+        was already assigned (`ASSIGNED`, `IN_PROGRESS`, or `PAUSED`). `ce_type`:
+        `com.example.worktaskservice.worktask.reassigned.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskReassigned.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskUnassigned:
+      name: WorkTaskUnassigned
+      title: WorkTask Unassigned
+      summary: A WorkTask was unassigned, returning it to DRAFT.
+      description: |
+        Emitted from `AssignWorkTask` with a null `assigneeId`. `ce_type`:
+        `com.example.worktaskservice.worktask.unassigned.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskUnassigned.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskBegun:
+      name: WorkTaskBegun
+      title: WorkTask Begun
+      summary: Work began on an assigned WorkTask.
+      description: |
+        Emitted from `BeginWorkTask`, transitioning `ASSIGNED` → `IN_PROGRESS`.
+        `ce_type`: `com.example.worktaskservice.worktask.begun.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskBegun.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskPaused:
+      name: WorkTaskPaused
+      title: WorkTask Paused
+      summary: An in-progress WorkTask was paused.
+      description: |
+        Emitted from `PauseWorkTask`, transitioning `IN_PROGRESS` → `PAUSED`.
+        `ce_type`: `com.example.worktaskservice.worktask.paused.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskPaused.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskResumed:
+      name: WorkTaskResumed
+      title: WorkTask Resumed
+      summary: A paused WorkTask resumed.
+      description: |
+        Emitted from `ResumeWorkTask`, transitioning `PAUSED` → `IN_PROGRESS`.
+        `ce_type`: `com.example.worktaskservice.worktask.resumed.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskResumed.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskCompleted:
+      name: WorkTaskCompleted
+      title: WorkTask Completed
+      summary: A WorkTask was completed (terminal).
+      description: |
+        Emitted from `CompleteWorkTask`, transitioning `IN_PROGRESS` →
+        `COMPLETED` (terminal). `ce_type`:
+        `com.example.worktaskservice.worktask.completed.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskCompleted.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskAborted:
+      name: WorkTaskAborted
+      title: WorkTask Aborted
+      summary: A WorkTask was aborted (terminal).
+      description: |
+        Emitted from `AbortWorkTask`, transitioning `ASSIGNED`/`IN_PROGRESS`/
+        `PAUSED` → `ABORTED` (terminal). `ce_type`:
+        `com.example.worktaskservice.worktask.aborted.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskAborted.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskCancelled:
+      name: WorkTaskCancelled
+      title: WorkTask Cancelled
+      summary: A WorkTask was cancelled (terminal).
+      description: |
+        Emitted from `CancelWorkTask`, transitioning `DRAFT`/`ASSIGNED`/
+        `IN_PROGRESS`/`PAUSED` → `CANCELLED` (terminal). `ce_type`:
+        `com.example.worktaskservice.worktask.cancelled.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskCancelled.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    workTaskCommandRejected:
+      name: WorkTaskCommandRejected
+      title: WorkTask Command Rejected
+      summary: An inbound command failed state-transition validation.
+      description: |
+        Emitted instead of a state-changing event when a syntactically valid
+        command is not a legal transition from the WorkTask's current state
+        (e.g. `Begin` sent to a `DRAFT` WorkTask). Carries `commandType` and
+        `rejectionReason`. The WorkTask's state is unchanged. `ce_type`:
+        `com.example.worktaskservice.worktask.commandrejected.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/events/WorkTaskCommandRejected.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey`.
+
+    # ---------------------------------------------------------------------
+    # Materialized State
+    # ---------------------------------------------------------------------
+
+    workTaskState:
+      name: WorkTaskState
+      title: WorkTask Materialized State
+      summary: Full current-state snapshot of a WorkTask (read model / query side).
+      description: |
+        Written to the compact topic in the same Kafka Streams transaction as
+        the domain event resulting from the same command (exactly-once
+        semantics). Contains the complete WorkTask aggregate: identifiers,
+        immutable creation-time properties (`type`, `subject`, `title`,
+        `description`, `priority`, `deadline`), current `status`, `assigneeId`,
+        and `createdAt`/`updatedAt` timestamps. `ce_type`:
+        `com.example.worktaskservice.worktask.state.v1`.
+      headers:
+        $ref: '#/components/schemas/cloudEventsHeaders'
+      payload:
+        schemaFormat: 'application/vnd.apache.avro+json;version=1.9.0'
+        schema:
+          $ref: '../avro/state/WorkTask.avsc'
+      bindings:
+        kafka:
+          key:
+            type: string
+            format: uuid
+            description: WorkTask ID (UUID v7), string-encoded — matches `ce_partitionkey` and the `event` topic key.
+
+    # ---------------------------------------------------------------------
+    # Dead Letter (internal)
+    # ---------------------------------------------------------------------
+
+    unparsableMessage:
+      name: UnparsableMessage
+      title: Unparsable Command (internal)
+      summary: An inbound command record that could not be deserialized.
+      description: |
+        **Internal — not part of the public contract.** Raw bytes of a command
+        record that failed Avro deserialization (unknown/incompatible schema,
+        corrupt payload, etc.). No fixed schema is guaranteed; payload format
+        is whatever the original (unparsable) producer sent.
+      x-internal: true
+      payload:
+        description: Raw, possibly-corrupt bytes — schema unknown by definition.
+
+  schemas:
+
+    cloudEventsHeaders:
+      type: object
+      description: |
+        CloudEvents 1.0 attributes carried as `ce_`-prefixed Kafka record
+        headers (Kafka Protocol Binding for CloudEvents, binary content mode —
+        the record value is raw Avro bytes and every CloudEvents attribute is
+        a header). Inbound commands and outbound events/state all share this
+        envelope shape; `ce_traceparent`/`ce_tracestate` are propagated end to
+        end from the inbound command through to the resulting event and state
+        records.
+      properties:
+        ce_specversion:
+          type: string
+          const: '1.0'
+          description: CloudEvents specification version.
+        ce_type:
+          type: string
+          description: |
+            Reverse-DNS type identifier, format
+            `com.example.worktaskservice.worktask.<verb>.v1`. See each
+            message's description for its concrete value.
+          examples:
+            - com.example.worktaskservice.worktask.create.v1
+            - com.example.worktaskservice.worktask.created.v1
+            - com.example.worktaskservice.worktask.assigned.v1
+            - com.example.worktaskservice.worktask.commandrejected.v1
+        ce_source:
+          type: string
+          const: /worktaskservice
+          description: Source URI-reference identifying this service.
+        ce_id:
+          type: string
+          format: uuid
+          description: |
+            Unique identifier of this CloudEvent (UUID v4) — generated
+            per-record and distinct from the WorkTask ID.
+        ce_time:
+          type: string
+          format: date-time
+          description: 'RFC 3339 UTC timestamp, e.g. `2026-06-07T14:32:45Z`.'
+        ce_subject:
+          type: string
+          description: |
+            `{subjectType}/{subjectId}` — the aggregate in another bounded
+            context that the WorkTask acts on, e.g.
+            `billing.invoices:payment/invoice/550e8400-e29b-41d4-a716-446655440000`.
+        ce_datacontenttype:
+          type: string
+          const: application/avro
+          description: Media type of the record value.
+        ce_dataschema:
+          type: string
+          format: uri
+          description: |
+            URI of the Avro schema in the Apicurio Schema Registry:
+            `{SCHEMA_REGISTRY_URL}/apis/registry/v2/groups/default/artifacts/{avro.schema.fullName}`.
+        ce_partitionkey:
+          type: string
+          format: uuid
+          description: |
+            WorkTask ID (UUID v7, string-encoded) — matches the Kafka record
+            key. CloudEvents [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md).
+        ce_traceparent:
+          type: string
+          description: |
+            W3C Trace Context `traceparent`. For commands, set by the producing
+            client; for events/state, propagated from the inbound command that
+            triggered them (omitted if absent on the inbound command).
+            CloudEvents [Distributed Tracing extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/distributed-tracing.md).
+        ce_tracestate:
+          type: string
+          description: |
+            W3C Trace Context `tracestate`, propagated the same way as
+            `ce_traceparent` (omitted if absent).
+      required:
+        - ce_specversion
+        - ce_type
+        - ce_source
+        - ce_id
+        - ce_time
+        - ce_subject
+        - ce_datacontenttype
+        - ce_dataschema
+        - ce_partitionkey

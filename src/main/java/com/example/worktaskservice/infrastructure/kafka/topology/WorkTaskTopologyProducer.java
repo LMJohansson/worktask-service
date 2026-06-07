@@ -175,7 +175,7 @@ public class WorkTaskTopologyProducer {
         private WorkTask reconstitute(WorkTaskCreatedEvent e, Instant now) {
             return WorkTask.reconstitute(
                     e.workTaskId(), e.type(), e.subject(),
-                    e.title(), e.description(),
+                    e.title(), e.description(), e.priority(), e.deadline(),
                     com.example.worktaskservice.domain.model.WorkTaskStatus.DRAFT,
                     null, now, now);
         }
@@ -187,7 +187,7 @@ public class WorkTaskTopologyProducer {
                     new com.example.worktaskservice.domain.model.Subject(
                             new com.example.worktaskservice.domain.model.SubjectType(s.getSubjectType()),
                             s.getSubjectId()),
-                    s.getTitle(), s.getDescription(),
+                    s.getTitle(), s.getDescription(), s.getPriority(), s.getDeadline(),
                     com.example.worktaskservice.domain.model.WorkTaskStatus.valueOf(s.getStatus().name()),
                     s.getAssigneeId(),
                     s.getCreatedAt(), s.getUpdatedAt());

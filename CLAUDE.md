@@ -67,6 +67,8 @@ Example: `work.tasks.worktask.public.worktask.command`
 Every WorkTask has:
 - **`type`** (`WorkTaskType`) — identifies the action to be performed, format: `<domain>(.<subdomain>)?:<bounded-context>/<task-name>` (e.g. `billing.invoices:payment/process-refund`). Immutable after creation.
 - **`subject`** (`Subject`) — the aggregate in another domain/bounded context that the task acts on. Groups a `SubjectType` (same format as `WorkTaskType`, e.g. `billing.invoices:payment/invoice`) and a `UUID`. Immutable after creation.
+- **`priority`** (`int`) — numeric priority ranking, defaults to `0`. Immutable after creation.
+- **`deadline`** (`Instant`, nullable) — optional due-by timestamp. Immutable after creation.
 
 ### WorkTask Lifecycle
 
@@ -163,7 +165,7 @@ Define the `UUID` fixed type inline on first use within each schema file; refere
 ```
 src/main/avro/
   commands/
-    CreateWorkTask.avsc      ← type, subjectType, subjectId, title, description
+    CreateWorkTask.avsc      ← type, subjectType, subjectId, title, description, priority, deadline
     AssignWorkTask.avsc      ← assigneeId (nullable — null means unassign)
     BeginWorkTask.avsc
     PauseWorkTask.avsc
@@ -172,7 +174,7 @@ src/main/avro/
     AbortWorkTask.avsc       ← reason (nullable)
     CancelWorkTask.avsc      ← reason (nullable)
   events/
-    WorkTaskCreated.avsc     ← type, subjectType, subjectId, title, description
+    WorkTaskCreated.avsc     ← type, subjectType, subjectId, title, description, priority, deadline
     WorkTaskAssigned.avsc
     WorkTaskReassigned.avsc
     WorkTaskUnassigned.avsc
@@ -192,7 +194,9 @@ All event schemas share base fields: `workTaskId` (UUID), `correlationId` (UUID)
 
 Namespace convention: `com.example.worktaskservice.<commands|events|state>`
 
-Use Schema Registry (Apicurio); compatibility mode: `BACKWARD`.
+Use Schema Registry (Apicurio). Compatibility mode differs by message direction:
+- **Commands** (inbound, consumed by this service): `BACKWARD` — this service must keep reading commands written against older schema versions as producers upgrade independently.
+- **Events and state** (outbound, produced by this service): `FORWARD` — downstream consumers must keep reading new schema versions with their older schema, since they may upgrade later than this service does.
 
 ### Package Structure
 

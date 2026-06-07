@@ -29,6 +29,11 @@ public class WorkTaskEntity extends PanacheEntityBase {
 
     public String description;
 
+    @Column(nullable = false)
+    public int priority;
+
+    public Instant deadline;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     public WorkTaskStatus status;

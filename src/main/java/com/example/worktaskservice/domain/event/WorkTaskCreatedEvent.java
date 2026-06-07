@@ -13,5 +13,7 @@ public record WorkTaskCreatedEvent(
         WorkTaskType type,
         Subject subject,
         String title,
-        String description
+        String description,
+        int priority,
+        Instant deadline
 ) implements WorkTaskEvent {}

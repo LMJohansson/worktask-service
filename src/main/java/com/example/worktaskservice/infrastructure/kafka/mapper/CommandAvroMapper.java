@@ -28,7 +28,9 @@ public class CommandAvroMapper {
                     new WorkTaskType(cmd.getType()),
                     new Subject(new SubjectType(cmd.getSubjectType()), toUUID(cmd.getSubjectId())),
                     cmd.getTitle(),
-                    cmd.getDescription());
+                    cmd.getDescription(),
+                    cmd.getPriority(),
+                    cmd.getDeadline());
             case AssignWorkTask cmd -> new AssignWorkTaskCommand(
                     toUUID(cmd.getWorkTaskId()),
                     toUUID(cmd.getCorrelationId()),

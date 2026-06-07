@@ -35,6 +35,16 @@
       "name": "description",
       "type": ["null", "string"],
       "default": null
+    },
+    {
+      "name": "priority",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "name": "deadline",
+      "type": ["null", {"type": "long", "logicalType": "timestamp-nanos"}],
+      "default": null
     }
   ]
 }
