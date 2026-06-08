@@ -81,23 +81,32 @@ command emits one of three distinct domain events depending on context:
 
 ### Kafka Streams topology
 
+```mermaid
+flowchart TD
+    subgraph cmd["Command-processing sub-topology"]
+        cmdTopic[("command topic")] --> cmdSource["command-source"]
+        cmdSource --> stp{{"state-transition<br/>StateTransitionProcessor"}}
+        store[("worktask-store<br/>KeyValueStore")] <-.-> stp
+        stp -- "unparsable / unmappable" --> dltSink["dead-letter-sink"]
+        stp -- "invalid transition →<br/>WorkTaskCommandRejected" --> eventSink["event-sink"]
+        stp -- "success → domain event" --> eventSink
+        stp -- "success → materialized state" --> compactSink["compact-sink"]
+        dltSink --> dltTopic[("dead-letter topic")]
+        eventSink --> eventTopic[("event topic")]
+        compactSink --> compactTopic[("compact topic")]
+    end
+
+    subgraph read["Read-model sub-topology"]
+        compactTopic --> compactSource["compact-source"]
+        compactSource --> dbSink{{"database-sink<br/>DatabaseSinkProcessor"}}
+        dbSink --> pg[("PostgreSQL<br/>read model")]
+    end
+
+    pg --> gql["GraphQL API<br/>/graphql"]
 ```
-[command topic]
-      │
-      ├── (unparsable message) ──► [dead-letter topic]
-      │
-      ▼
- StateTransitionProcessor
-      │  loads current WorkTask from KeyValueStore, applies transition
-      │
-      ├── (invalid transition) ──► [event topic]  — WorkTaskCommandRejected event
-      │
-      ├──► [event topic]    — domain event (result of successful command)
-      └──► [compact topic]  — full materialized WorkTask state (same key)
-                 │            (both writes in one Kafka Streams transaction)
-                 ▼
-            DatabaseSinkProcessor ──► PostgreSQL (read model / query side)
-```
+
+The `event-sink` and `compact-sink` writes for a successful command happen in a
+single `exactly_once_v2` transaction.
 
 Implemented in `WorkTaskTopologyProducer` using the low-level `Topology` API
 with named sink nodes (`event-sink`, `compact-sink`, `dead-letter-sink`) and
