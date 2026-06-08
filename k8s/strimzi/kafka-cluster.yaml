@@ -1,8 +1,10 @@
 # Single-node KRaft Kafka cluster for local Minikube development.
-# Requires the Strimzi Kafka Operator to be installed first (see README) —
-# the operator's CRDs (Kafka, KafkaNodePool, KafkaTopic, ...) are cluster-scoped
-# and managed as a one-time prerequisite, not as part of this Skaffold deploy.
-apiVersion: kafka.strimzi.io/v1beta2
+# Requires the Strimzi Kafka Operator and its CRDs (Kafka, KafkaNodePool, KafkaTopic, ...).
+# Skaffold installs the operator via the `strimzi-operator` config in skaffold.yaml,
+# which `worktask-service` declares as a `requires` dependency purely for deploy
+# ordering — Skaffold guarantees required-config deploys complete first, ensuring
+# the CRDs exist before these custom resources are applied.
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: dual-role
@@ -17,7 +19,7 @@ spec:
   storage:
     type: ephemeral
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: worktask-kafka

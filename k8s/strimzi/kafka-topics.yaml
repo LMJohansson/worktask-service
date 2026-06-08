@@ -2,7 +2,7 @@
 # (see quarkus.kafka.devservices.topic-partitions.* in application.properties).
 # CR metadata.name must be a valid k8s name (no dots); the real dotted Kafka
 # topic name is carried via spec.topicName.
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: work-tasks-worktask-public-worktask-command
@@ -16,7 +16,7 @@ spec:
   config:
     cleanup.policy: delete
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: work-tasks-worktask-public-worktask-event
@@ -30,7 +30,7 @@ spec:
   config:
     cleanup.policy: delete
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: work-tasks-worktask-public-worktask-compact
@@ -44,7 +44,7 @@ spec:
   config:
     cleanup.policy: compact
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: work-tasks-worktask-private-worktask-dead-letter
