@@ -1,0 +1,67 @@
+# Apicurio Schema Registry 3.x for local Minikube development.
+#
+# Replaces the community "ultimate" Helm chart (oci://ghcr.io/eshepelyuk/helm/apicurio-registry):
+# that chart targets Apicurio 2.5.x and hardcodes its health probes to `/health/{live,ready}` on
+# the HTTP port 8080 with no override. Apicurio Registry 3.x (a Quarkus app) instead serves health
+# on its separate management port 9000 (`/health/live`, `/health/ready`) — 8080 returns 404 — so
+# the chart's pod never goes Ready and crash-loops. A hand-written manifest with probes pointed at
+# port 9000 is simpler and correct. Storage is in-memory (the 3.x default), matching what Quarkus
+# Dev Services provisions. The Service name/port match SCHEMA_REGISTRY_URL in application.properties
+# (http://worktask-apicurio-registry.worktask.svc.cluster.local:8080).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worktask-apicurio-registry
+  namespace: worktask
+  labels:
+    app: worktask-apicurio-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worktask-apicurio-registry
+  template:
+    metadata:
+      labels:
+        app: worktask-apicurio-registry
+    spec:
+      containers:
+        - name: registry
+          image: quay.io/apicurio/apicurio-registry:3.2.5
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          # Apicurio 3.x serves health on the management port (9000), not on 8080.
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 100m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worktask-apicurio-registry
+  namespace: worktask
+  labels:
+    app: worktask-apicurio-registry
+spec:
+  selector:
+    app: worktask-apicurio-registry
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
