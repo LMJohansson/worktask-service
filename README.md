@@ -82,6 +82,19 @@ command emits one of three distinct domain events depending on context:
 ### Kafka Streams topology
 
 ```mermaid
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'fontFamily': 'Comic Sans MS, Comic Sans, cursive',
+      'background': '#ffffff',
+      'primaryColor': '#ffffff',
+      'primaryBorderColor': '#000000',
+      'lineColor': '#000000',
+      'tertiaryColor': '#ffffff'
+    }
+  }
+}%%
 flowchart TD
     subgraph cmd["Command-processing sub-topology"]
         cmdTopic[("command topic")] --> cmdSource["command-source"]
