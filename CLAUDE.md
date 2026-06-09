@@ -116,6 +116,14 @@ Three separate domain events are emitted from the unified Assign command: `WorkT
 
 Atomicity between the `event` and `compact` topics is achieved via Kafka Streams exactly-once semantics — configure `processing.guarantee=exactly_once_v2`. The KeyValueStore is the authoritative in-flight state between commands.
 
+#### Why the state store and compact topic are distinct
+
+The `StateTransitionProcessor` writes the materialized state in two places — `store.put(...)` and a `forward(...)` to the `compact` topic. This is intentional, not redundant bookkeeping that risks divergence:
+
+- **Atomic, so they cannot diverge.** The `store.put` (and thus the store's internal changelog) and the `forward` to the `compact` topic commit in the same `exactly_once_v2` transaction.
+- **The store must be written synchronously, so it cannot be a read-only materialization of the `compact` topic.** `compact-source` is a separate sub-topology consumed asynchronously; feeding the store from it would let the next command on the same key read stale state. Read-modify-write across sequential commands requires the processor to update the store in-line.
+- **The `compact` topic cannot serve as the store's changelog.** A Streams changelog is name-managed (`<appId>-<storeName>-changelog`), header-less, and value-serde only, whereas the `compact` topic is a public-API topic carrying CloudEvents `ce_` headers under FORWARD compatibility. So the store keeps its own (internal) changelog as its durable backing, and the `compact` topic is a separate public projection.
+
 `DatabaseSinkProcessor` is implemented as a second source/processor pair in the same `Topology` (`compact-source` → `database-sink`), independently consuming the `compact` topic and upserting each materialized `WorkTask` into PostgreSQL via `WorkTaskRepository` (`PanacheWorkTaskRepository`). Each write runs in its own transaction via `QuarkusTransaction.requiringNew(...)`, since Hibernate ORM/Panache requires an active transaction and the Kafka Streams processor thread is not CDI-managed.
 
 A read-only **GraphQL query API** (`quarkus-smallrye-graphql`, exposed at `/graphql`) sits on top of this read model — see `infrastructure/graphql/` in the package structure below.

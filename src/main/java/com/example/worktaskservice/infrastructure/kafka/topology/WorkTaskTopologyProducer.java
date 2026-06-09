@@ -60,6 +60,15 @@ public class WorkTaskTopologyProducer {
                     StateTransitionProcessor::new,
                     "command-source");
 
+            // Changelog logging is intentionally left enabled (the default): this store's own
+            // changelog is its durable, synchronously-restored backing. The public compact topic
+            // (COMPACT_SINK below) is a *separate parallel projection*, not the store's changelog —
+            // it cannot double as one because it is a public-API topic carrying CloudEvents ce_
+            // headers under FORWARD compatibility, whereas a Streams changelog is name-managed,
+            // header-less, and value-serde only. The store must also be written synchronously by
+            // the processor (read-modify-write across sequential commands on the same key), so it
+            // cannot be a read-only materialization of the asynchronously-consumed compact topic.
+            // Both writes commit in one exactly_once_v2 transaction, so they cannot diverge.
             topology.addStateStore(
                     Stores.keyValueStoreBuilder(
                             Stores.persistentKeyValueStore(STORE_NAME),
@@ -146,14 +155,14 @@ public class WorkTaskTopologyProducer {
                     event = task.apply(inbound.command(), now);
                 }
 
-                store.put(record.key(), eventMapper.toStateAvro(task));
+                var stateAvro = eventMapper.toStateAvro(task);
+                store.put(record.key(), stateAvro);
 
                 EventAvroMapper.OutboundEvent outbound = eventMapper.toAvro(event, task, traceparent, tracestate);
                 context.forward(
                         new Record<>(record.key(), outbound.avro(), now.toEpochMilli(), outbound.headers()),
                         EVENT_SINK);
 
-                var stateAvro = eventMapper.toStateAvro(task);
                 context.forward(
                         new Record<>(record.key(), stateAvro, now.toEpochMilli()),
                         COMPACT_SINK);
