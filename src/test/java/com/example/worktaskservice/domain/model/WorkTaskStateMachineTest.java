@@ -18,8 +18,8 @@ class WorkTaskStateMachineTest {
     private static final UUID ID      = UUID.randomUUID();
     private static final UUID CORR    = UUID.randomUUID();
     private static final UUID ASSIGNEE = UUID.randomUUID();
-    private static final WorkTaskType TYPE    = new WorkTaskType("billing.invoices:payment/process-refund");
-    private static final Subject      SUBJECT = new Subject(new SubjectType("billing.invoices:payment/invoice"), UUID.randomUUID());
+    private static final WorkTaskType TYPE    = new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund");
+    private static final Subject      SUBJECT = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID());
     private static final Instant      NOW     = Instant.now();
 
     private WorkTask taskInState(WorkTaskStatus status) {

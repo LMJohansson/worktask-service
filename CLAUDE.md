@@ -65,8 +65,8 @@ Example: `work.tasks.worktask.public.worktask.command`
 ### WorkTask Model
 
 Every WorkTask has:
-- **`type`** (`WorkTaskType`) — identifies the action to be performed, format: `<domain>(.<subdomain>)?:<bounded-context>/<task-name>` (e.g. `billing.invoices:payment/process-refund`). Immutable after creation.
-- **`subject`** (`Subject`) — the aggregate in another domain/bounded context that the task acts on. Groups a `SubjectType` (same format as `WorkTaskType`, e.g. `billing.invoices:payment/invoice`) and a `UUID`. Immutable after creation.
+- **`type`** (`WorkTaskType`) — identifies the action to be performed, encoded as a URN: `urn:worktask-type:<domain>(.<subdomain>)?:<bounded-context>:<task-name>` (e.g. `urn:worktask-type:billing.invoices:payment:process-refund`). Immutable after creation.
+- **`subject`** (`Subject`) — the aggregate in another domain/bounded context that the task acts on. Groups a `SubjectType` (`urn:subject-type:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>`, e.g. `urn:subject-type:billing.invoices:payment:invoice`) and a `UUID`. Serialized as a single combined URN `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<uuid>` (via `Subject.toUrn()`/`fromUrn()`); the domain record keeps the `{SubjectType, UUID}` structure. Immutable after creation. The `worktask-type`/`subject-type`/`subject` URNs share a common NSS fragment defined in `domain/model/UrnFormat.java`.
 - **`priority`** (`int`) — numeric priority ranking, defaults to `0`. Immutable after creation.
 - **`deadline`** (`Instant`, nullable) — optional due-by timestamp. Immutable after creation.
 
@@ -145,17 +145,19 @@ All Kafka records (event topic + compact topic) use the **Kafka Protocol Binding
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ce_specversion`     | `1.0`                                                                                                                                                                             |
 | `ce_type`            | `com.example.worktaskservice.worktask.<verb>.v1`                                                                                                                                  |
-| `ce_source`          | `/worktaskservice`                                                                                                                                                                |
+| `ce_source`          | propagated from the inbound command's `ce_source`; falls back to `urn:source:work.tasks:worktask` (this bounded context, `urn:source:<domain>(.<subdomain>):<bounded-context>`) when absent |
 | `ce_id`              | UUID v4 (per-event; distinct from WorkTask ID)                                                                                                                                    |
 | `ce_time`            | RFC 3339 timestamp                                                                                                                                                                |
-| `ce_subject`         | `{subjectType}/{subjectId}` — e.g. `billing.invoices:payment/invoice/550e8400-…`                                                                                                  |
+| `ce_subject`         | the combined Subject URN — e.g. `urn:subject:billing.invoices:payment:invoice:550e8400-…`                                                                                          |
 | `ce_datacontenttype` | `application/avro`                                                                                                                                                                |
 | `ce_dataschema`      | `{SCHEMA_REGISTRY_URL}/apis/registry/v2/groups/default/artifacts/{avro.schema.fullName}`                                                                                          |
 | `ce_partitionkey`    | WorkTask ID (UUID string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the Kafka record key          |
+| `ce_correlationid`   | the WorkTask `correlationId` (UUID string) — [Correlation extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/correlation.md); groups the business transaction |
+| `ce_causationid`     | the inbound command's `ce_id` — Correlation extension; the id of the command that directly caused this event (omitted if the inbound `ce_id` is absent)                            |
 | `ce_traceparent`     | W3C Trace Context — [Distributed Tracing extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/distributed-tracing.md); propagated from inbound command |
 | `ce_tracestate`      | W3C Trace Context — Distributed Tracing extension; propagated from inbound command (if present)                                                                                   |
 
-Inbound command records carry the same `ce_` headers. The topology extracts `ce_traceparent`/`ce_tracestate` to restore OTel context before processing. Use OTel semantic conventions for span and metric naming (`messaging.*`, `db.*`).
+Inbound command records carry the same `ce_` headers. The topology extracts `ce_traceparent`/`ce_tracestate` to restore OTel context before processing, the inbound `ce_id` to set `ce_causationid`, and the inbound `ce_source` to propagate as the `ce_source` of the resulting event(s). Use OTel semantic conventions for span and metric naming (`messaging.*`, `db.*`).
 
 ### Avro Schemas
 
@@ -175,7 +177,7 @@ Define the `UUID` fixed type inline on first use within each schema file; refere
 ```
 src/main/avro/
   commands/
-    CreateWorkTask.avsc      ← type, subjectType, subjectId, title, description, priority, deadline
+    CreateWorkTask.avsc      ← type, subject, title, description, priority, deadline
     AssignWorkTask.avsc      ← assigneeId (nullable — null means unassign)
     BeginWorkTask.avsc
     PauseWorkTask.avsc
@@ -184,7 +186,7 @@ src/main/avro/
     AbortWorkTask.avsc       ← reason (nullable)
     CancelWorkTask.avsc      ← reason (nullable)
   events/
-    WorkTaskCreated.avsc     ← type, subjectType, subjectId, title, description, priority, deadline
+    WorkTaskCreated.avsc     ← type, subject, title, description, priority, deadline
     WorkTaskAssigned.avsc
     WorkTaskReassigned.avsc
     WorkTaskUnassigned.avsc

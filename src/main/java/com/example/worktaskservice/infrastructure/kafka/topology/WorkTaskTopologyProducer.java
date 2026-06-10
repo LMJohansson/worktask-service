@@ -149,7 +149,7 @@ public class WorkTaskTopologyProducer {
                 } else {
                     if (task == null) {
                         forwardRejection(record.key(), inbound.command(), "WorkTask not found",
-                                traceparent, tracestate, now);
+                                traceparent, tracestate, inbound.causationId(), inbound.source(), now);
                         return;
                     }
                     event = task.apply(inbound.command(), now);
@@ -158,7 +158,9 @@ public class WorkTaskTopologyProducer {
                 var stateAvro = eventMapper.toStateAvro(task);
                 store.put(record.key(), stateAvro);
 
-                EventAvroMapper.OutboundEvent outbound = eventMapper.toAvro(event, task, traceparent, tracestate);
+                EventAvroMapper.OutboundEvent outbound =
+                        eventMapper.toAvro(event, task, traceparent, tracestate,
+                                inbound.causationId(), inbound.source());
                 context.forward(
                         new Record<>(record.key(), outbound.avro(), now.toEpochMilli(), outbound.headers()),
                         EVENT_SINK);
@@ -169,19 +171,21 @@ public class WorkTaskTopologyProducer {
 
             } catch (InvalidStateTransitionException e) {
                 forwardRejection(record.key(), inbound.command(), e.getMessage(),
-                        traceparent, tracestate, now);
+                        traceparent, tracestate, inbound.causationId(), inbound.source(), now);
             }
         }
 
         private void forwardRejection(String key, Object cmd, String reason,
-                                      String traceparent, String tracestate, Instant now) {
+                                      String traceparent, String tracestate, String causationId,
+                                      String source, Instant now) {
             UUID workTaskId = UUID.fromString(key);
             var rejEvent = new WorkTaskCommandRejectedEvent(
                     workTaskId, UUID.randomUUID(), now,
                     cmd.getClass().getSimpleName(), reason);
             WorkTask dummyTask = loadOrNull(key);
             if (dummyTask == null) return;
-            EventAvroMapper.OutboundEvent outbound = eventMapper.toAvro(rejEvent, dummyTask, traceparent, tracestate);
+            EventAvroMapper.OutboundEvent outbound =
+                    eventMapper.toAvro(rejEvent, dummyTask, traceparent, tracestate, causationId, source);
             context.forward(
                     new Record<>(key, outbound.avro(), now.toEpochMilli(), outbound.headers()),
                     EVENT_SINK);

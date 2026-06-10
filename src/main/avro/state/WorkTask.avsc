@@ -12,12 +12,8 @@
       "type": "string"
     },
     {
-      "name": "subjectType",
+      "name": "subject",
       "type": "string"
-    },
-    {
-      "name": "subjectId",
-      "type": "UUID"
     },
     {
       "name": "title",

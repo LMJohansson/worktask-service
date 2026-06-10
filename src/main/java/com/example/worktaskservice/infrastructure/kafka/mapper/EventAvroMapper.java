@@ -22,10 +22,10 @@ public class EventAvroMapper {
     public record OutboundEvent(SpecificRecord avro, Headers headers) {}
 
     public OutboundEvent toAvro(WorkTaskEvent event, WorkTask task,
-                                String traceparent, String tracestate) {
+                                String traceparent, String tracestate, String causationId, String source) {
         SpecificRecord avro = toAvroRecord(event);
         Headers headers = CloudEventHeaders.forEvent(event, task, avro,
-                schemaRegistryUrl, traceparent, tracestate);
+                schemaRegistryUrl, traceparent, tracestate, causationId, source);
         return new OutboundEvent(avro, headers);
     }
 
@@ -33,8 +33,7 @@ public class EventAvroMapper {
         var avro = new com.example.worktaskservice.state.WorkTask();
         avro.setId(toFixed(task.id()));
         avro.setType(task.type().value());
-        avro.setSubjectType(task.subject().type().value());
-        avro.setSubjectId(toFixed(task.subject().id()));
+        avro.setSubject(task.subject().toUrn());
         avro.setTitle(task.title());
         avro.setDescription(task.description());
         avro.setPriority(task.priority());
@@ -50,9 +49,7 @@ public class EventAvroMapper {
         return WorkTask.reconstitute(
                 state.getId(),
                 new com.example.worktaskservice.domain.model.WorkTaskType(state.getType()),
-                new com.example.worktaskservice.domain.model.Subject(
-                        new com.example.worktaskservice.domain.model.SubjectType(state.getSubjectType()),
-                        state.getSubjectId()),
+                com.example.worktaskservice.domain.model.Subject.fromUrn(state.getSubject()),
                 state.getTitle(), state.getDescription(), state.getPriority(), state.getDeadline(),
                 com.example.worktaskservice.domain.model.WorkTaskStatus.valueOf(state.getStatus().name()),
                 state.getAssigneeId(),
@@ -67,8 +64,7 @@ public class EventAvroMapper {
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 avro.setType(e.type().value());
-                avro.setSubjectType(e.subject().type().value());
-                avro.setSubjectId(toFixed(e.subject().id()));
+                avro.setSubject(e.subject().toUrn());
                 avro.setTitle(e.title());
                 avro.setDescription(e.description());
                 avro.setPriority(e.priority());

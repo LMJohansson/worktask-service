@@ -24,8 +24,8 @@ import static org.hamcrest.Matchers.equalTo;
 @QuarkusTest
 class WorkTaskGraphQLApiTest {
 
-    private static final WorkTaskType TYPE = new WorkTaskType("billing.invoices:payment/process-refund");
-    private static final SubjectType SUBJECT_TYPE = new SubjectType("billing.invoices:payment/invoice");
+    private static final WorkTaskType TYPE = new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund");
+    private static final SubjectType SUBJECT_TYPE = new SubjectType("urn:subject-type:billing.invoices:payment:invoice");
 
     @Inject
     PanacheWorkTaskRepository repository;

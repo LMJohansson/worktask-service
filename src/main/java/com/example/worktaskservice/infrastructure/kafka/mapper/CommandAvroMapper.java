@@ -3,7 +3,6 @@ package com.example.worktaskservice.infrastructure.kafka.mapper;
 import com.example.worktaskservice.commands.*;
 import com.example.worktaskservice.domain.command.*;
 import com.example.worktaskservice.domain.model.Subject;
-import com.example.worktaskservice.domain.model.SubjectType;
 import com.example.worktaskservice.domain.model.WorkTaskType;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.common.header.Headers;
@@ -12,12 +11,17 @@ import java.util.UUID;
 
 public class CommandAvroMapper {
 
-    public record InboundCommand(Object command, String traceparent, String tracestate) {}
+    public record InboundCommand(Object command, String traceparent, String tracestate,
+                                 String causationId, String source) {}
 
     public InboundCommand map(SpecificRecord avro, Headers headers) {
         String traceparent = CloudEventHeaders.extractHeader(headers, "ce_traceparent");
         String tracestate  = CloudEventHeaders.extractHeader(headers, "ce_tracestate");
-        return new InboundCommand(toDomain(avro), traceparent, tracestate);
+        // The inbound command's CloudEvents id is the causation id of any event it produces.
+        String causationId = CloudEventHeaders.extractHeader(headers, "ce_id");
+        // The originating source is propagated through to the produced event(s).
+        String source = CloudEventHeaders.extractHeader(headers, "ce_source");
+        return new InboundCommand(toDomain(avro), traceparent, tracestate, causationId, source);
     }
 
     private Object toDomain(SpecificRecord avro) {
@@ -26,7 +30,7 @@ public class CommandAvroMapper {
                     toUUID(cmd.getWorkTaskId()),
                     toUUID(cmd.getCorrelationId()),
                     new WorkTaskType(cmd.getType()),
-                    new Subject(new SubjectType(cmd.getSubjectType()), toUUID(cmd.getSubjectId())),
+                    Subject.fromUrn(cmd.getSubject()),
                     cmd.getTitle(),
                     cmd.getDescription(),
                     cmd.getPriority(),

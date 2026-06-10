@@ -4,14 +4,16 @@ import java.util.regex.Pattern;
 
 public record WorkTaskType(String value) {
 
+    // urn:worktask-type:<domain>(.<subdomain>)?:<bounded-context>:<task-name>
+    static final String NID = "worktask-type";
     private static final Pattern PATTERN =
-            Pattern.compile("^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*:[a-z][a-z0-9-]*/[a-z][a-z0-9-]+$");
+            Pattern.compile("^urn:" + NID + ":" + UrnFormat.NSS + "$");
 
     public WorkTaskType {
         if (value == null || !PATTERN.matcher(value).matches()) {
             throw new IllegalArgumentException(
-                    "Invalid WorkTaskType format '%s'; expected <domain>(.<subdomain>)?:<bounded-context>/<task-name>"
-                            .formatted(value));
+                    "Invalid WorkTaskType URN '%s'; expected urn:%s:<domain>(.<subdomain>)?:<bounded-context>:<task-name>"
+                            .formatted(value, NID));
         }
     }
 

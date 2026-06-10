@@ -9,8 +9,7 @@ import java.util.UUID;
 public record WorkTaskDto(
         UUID id,
         String type,
-        String subjectType,
-        UUID subjectId,
+        String subject,
         String title,
         String description,
         int priority,
@@ -24,8 +23,7 @@ public record WorkTaskDto(
         return new WorkTaskDto(
                 task.id(),
                 task.type().value(),
-                task.subject().type().value(),
-                task.subject().id(),
+                task.subject().toUrn(),
                 task.title(),
                 task.description(),
                 task.priority(),
