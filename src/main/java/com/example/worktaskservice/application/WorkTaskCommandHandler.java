@@ -29,9 +29,9 @@ public class WorkTaskCommandHandler {
     }
 
     public WorkTaskEvent handle(Object cmd, Instant now) {
-        UUID workTaskId = extractWorkTaskId(cmd);
-        WorkTask task = repository.find(workTaskId)
-                .orElseThrow(() -> new IllegalArgumentException("WorkTask not found: " + workTaskId));
+        UUID id = extractWorkTaskId(cmd);
+        WorkTask task = repository.find(id)
+                .orElseThrow(() -> new IllegalArgumentException("WorkTask not found: " + id));
         WorkTaskEvent event = task.apply(cmd, now);
         repository.save(task);
         publisher.publish(event);
@@ -40,7 +40,7 @@ public class WorkTaskCommandHandler {
 
     private WorkTask applyCreated(WorkTaskCreatedEvent e, Instant now) {
         return WorkTask.reconstitute(
-                e.workTaskId(), e.type(), e.subject(),
+                e.id(), e.type(), e.subject(), e.source(),
                 e.title(), e.description(), e.priority(), e.deadline(),
                 com.example.worktaskservice.domain.model.WorkTaskStatus.DRAFT,
                 null, now, now);
@@ -48,13 +48,13 @@ public class WorkTaskCommandHandler {
 
     private java.util.UUID extractWorkTaskId(Object cmd) {
         return switch (cmd) {
-            case com.example.worktaskservice.domain.command.AssignWorkTaskCommand c -> c.workTaskId();
-            case com.example.worktaskservice.domain.command.BeginWorkTaskCommand c -> c.workTaskId();
-            case com.example.worktaskservice.domain.command.PauseWorkTaskCommand c -> c.workTaskId();
-            case com.example.worktaskservice.domain.command.ResumeWorkTaskCommand c -> c.workTaskId();
-            case com.example.worktaskservice.domain.command.CompleteWorkTaskCommand c -> c.workTaskId();
-            case com.example.worktaskservice.domain.command.AbortWorkTaskCommand c -> c.workTaskId();
-            case com.example.worktaskservice.domain.command.CancelWorkTaskCommand c -> c.workTaskId();
+            case com.example.worktaskservice.domain.command.AssignWorkTaskCommand c -> c.id();
+            case com.example.worktaskservice.domain.command.BeginWorkTaskCommand c -> c.id();
+            case com.example.worktaskservice.domain.command.PauseWorkTaskCommand c -> c.id();
+            case com.example.worktaskservice.domain.command.ResumeWorkTaskCommand c -> c.id();
+            case com.example.worktaskservice.domain.command.CompleteWorkTaskCommand c -> c.id();
+            case com.example.worktaskservice.domain.command.AbortWorkTaskCommand c -> c.id();
+            case com.example.worktaskservice.domain.command.CancelWorkTaskCommand c -> c.id();
             default -> throw new IllegalArgumentException("Unknown command: " + cmd.getClass().getSimpleName());
         };
     }

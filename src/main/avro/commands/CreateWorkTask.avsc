@@ -4,7 +4,7 @@
   "name": "CreateWorkTask",
   "fields": [
     {
-      "name": "workTaskId",
+      "name": "id",
       "type": {
         "type": "fixed",
         "size": 16,
@@ -22,6 +22,10 @@
     },
     {
       "name": "subject",
+      "type": "string"
+    },
+    {
+      "name": "source",
       "type": "string"
     },
     {

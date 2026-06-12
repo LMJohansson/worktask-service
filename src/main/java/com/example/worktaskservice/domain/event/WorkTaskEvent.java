@@ -9,7 +9,7 @@ public sealed interface WorkTaskEvent
                 WorkTaskResumedEvent, WorkTaskCompletedEvent, WorkTaskAbortedEvent,
                 WorkTaskCancelledEvent, WorkTaskCommandRejectedEvent {
 
-    UUID workTaskId();
+    UUID id();
     UUID correlationId();
     Instant occurredAt();
 }

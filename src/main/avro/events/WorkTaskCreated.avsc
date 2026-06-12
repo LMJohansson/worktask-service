@@ -4,7 +4,7 @@
   "name": "WorkTaskCreated",
   "fields": [
     {
-      "name": "workTaskId",
+      "name": "id",
       "type": {"type": "fixed", "size": 16, "name": "UUID", "logicalType": "uuid"}
     },
     {
@@ -21,6 +21,10 @@
     },
     {
       "name": "subject",
+      "type": "string"
+    },
+    {
+      "name": "source",
       "type": "string"
     },
     {

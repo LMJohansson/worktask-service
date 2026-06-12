@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record WorkTaskReassignedEvent(
-        UUID workTaskId,
+        UUID id,
         UUID correlationId,
         Instant occurredAt,
         UUID assigneeId

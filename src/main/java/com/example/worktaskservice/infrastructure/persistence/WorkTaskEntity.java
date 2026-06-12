@@ -25,6 +25,9 @@ public class WorkTaskEntity extends PanacheEntityBase {
     public UUID subjectId;
 
     @Column(nullable = false)
+    public String source;
+
+    @Column(nullable = false)
     public String title;
 
     public String description;

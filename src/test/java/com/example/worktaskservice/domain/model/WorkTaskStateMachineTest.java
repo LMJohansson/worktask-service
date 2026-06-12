@@ -20,11 +20,12 @@ class WorkTaskStateMachineTest {
     private static final UUID ASSIGNEE = UUID.randomUUID();
     private static final WorkTaskType TYPE    = new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund");
     private static final Subject      SUBJECT = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID());
+    private static final Source       SOURCE  = new Source("urn:source:billing.invoices:payment:42");
     private static final Instant      NOW     = Instant.now();
 
     private WorkTask taskInState(WorkTaskStatus status) {
         UUID assigneeId = status == WorkTaskStatus.DRAFT ? null : ASSIGNEE;
-        return WorkTask.reconstitute(ID, TYPE, SUBJECT, "title", null, 1, NOW.plusSeconds(3600),
+        return WorkTask.reconstitute(ID, TYPE, SUBJECT, SOURCE, "title", null, 1, NOW.plusSeconds(3600),
                 status, assigneeId, NOW, NOW);
     }
 
@@ -36,15 +37,16 @@ class WorkTaskStateMachineTest {
 
         @Test void producesWorkTaskCreatedEvent() {
             Instant deadline = NOW.plusSeconds(3600);
-            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, "My Task", "desc", 5, deadline);
+            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, SOURCE, "My Task", "desc", 5, deadline);
             WorkTaskCreatedEvent event = WorkTask.create(cmd, NOW);
 
             assertInstanceOf(WorkTaskCreatedEvent.class, event);
-            assertEquals(ID,      event.workTaskId());
+            assertEquals(ID,      event.id());
             assertEquals(CORR,    event.correlationId());
             assertEquals(NOW,     event.occurredAt());
             assertEquals(TYPE,    event.type());
             assertEquals(SUBJECT, event.subject());
+            assertEquals(SOURCE,  event.source());
             assertEquals("My Task", event.title());
             assertEquals("desc",    event.description());
             assertEquals(5,        event.priority());
@@ -52,7 +54,7 @@ class WorkTaskStateMachineTest {
         }
 
         @Test void applyCreateOnExistingTaskThrows() {
-            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, "x", null, 0, null);
+            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, SOURCE, "x", null, 0, null);
             var task = taskInState(WorkTaskStatus.DRAFT);
 
             var ex = assertThrows(InvalidStateTransitionException.class,
@@ -75,7 +77,7 @@ class WorkTaskStateMachineTest {
             assertEquals(WorkTaskStatus.ASSIGNED, task.status());
             assertEquals(ASSIGNEE, task.assigneeId());
             assertEquals(ASSIGNEE, event.assigneeId());
-            assertEquals(ID, event.workTaskId());
+            assertEquals(ID, event.id());
         }
 
         @Test void fromAssignedProducesReassignedEvent() {
@@ -170,7 +172,7 @@ class WorkTaskStateMachineTest {
 
             var event = assertInstanceOf(WorkTaskBegunEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.IN_PROGRESS, task.status());
-            assertEquals(ID, event.workTaskId());
+            assertEquals(ID, event.id());
         }
 
         @ParameterizedTest
@@ -197,7 +199,7 @@ class WorkTaskStateMachineTest {
 
             var event = assertInstanceOf(WorkTaskPausedEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.PAUSED, task.status());
-            assertEquals(ID, event.workTaskId());
+            assertEquals(ID, event.id());
         }
 
         @ParameterizedTest
@@ -224,7 +226,7 @@ class WorkTaskStateMachineTest {
 
             var event = assertInstanceOf(WorkTaskResumedEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.IN_PROGRESS, task.status());
-            assertEquals(ID, event.workTaskId());
+            assertEquals(ID, event.id());
         }
 
         @ParameterizedTest
@@ -251,7 +253,7 @@ class WorkTaskStateMachineTest {
 
             var event = assertInstanceOf(WorkTaskCompletedEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.COMPLETED, task.status());
-            assertEquals(ID, event.workTaskId());
+            assertEquals(ID, event.id());
         }
 
         @ParameterizedTest
@@ -278,7 +280,7 @@ class WorkTaskStateMachineTest {
 
             var event = assertInstanceOf(WorkTaskAbortedEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.ABORTED, task.status());
-            assertEquals(ID, event.workTaskId());
+            assertEquals(ID, event.id());
         }
 
         @ParameterizedTest
@@ -307,7 +309,7 @@ class WorkTaskStateMachineTest {
 
             var event = assertInstanceOf(WorkTaskCancelledEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.CANCELLED, task.status());
-            assertEquals(ID, event.workTaskId());
+            assertEquals(ID, event.id());
         }
 
         @ParameterizedTest
@@ -333,7 +335,7 @@ class WorkTaskStateMachineTest {
             Instant ts  = Instant.parse("2026-01-01T00:00:00Z");
             var event = task.apply(new BeginWorkTaskCommand(ID, CORR), ts);
 
-            assertEquals(ID,   event.workTaskId());
+            assertEquals(ID,   event.id());
             assertEquals(CORR, event.correlationId());
             assertEquals(ts,   event.occurredAt());
         }

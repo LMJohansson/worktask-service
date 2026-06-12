@@ -1,6 +1,7 @@
 package com.example.worktaskservice.infrastructure.kafka.mapper;
 
 import com.example.worktaskservice.domain.event.*;
+import com.example.worktaskservice.domain.model.Subject;
 import com.example.worktaskservice.domain.model.WorkTask;
 import com.example.worktaskservice.events.*;
 import com.example.worktaskservice.state.WorkTaskStatus;
@@ -21,10 +22,10 @@ public class EventAvroMapper {
 
     public record OutboundEvent(SpecificRecord avro, Headers headers) {}
 
-    public OutboundEvent toAvro(WorkTaskEvent event, WorkTask task,
+    public OutboundEvent toAvro(WorkTaskEvent event, Subject subject,
                                 String traceparent, String tracestate, String causationId, String source) {
         SpecificRecord avro = toAvroRecord(event);
-        Headers headers = CloudEventHeaders.forEvent(event, task, avro,
+        Headers headers = CloudEventHeaders.forEvent(event, subject, avro,
                 schemaRegistryUrl, traceparent, tracestate, causationId, source);
         return new OutboundEvent(avro, headers);
     }
@@ -34,6 +35,7 @@ public class EventAvroMapper {
         avro.setId(toFixed(task.id()));
         avro.setType(task.type().value());
         avro.setSubject(task.subject().toUrn());
+        avro.setSource(task.source().value());
         avro.setTitle(task.title());
         avro.setDescription(task.description());
         avro.setPriority(task.priority());
@@ -50,6 +52,7 @@ public class EventAvroMapper {
                 state.getId(),
                 new com.example.worktaskservice.domain.model.WorkTaskType(state.getType()),
                 com.example.worktaskservice.domain.model.Subject.fromUrn(state.getSubject()),
+                new com.example.worktaskservice.domain.model.Source(state.getSource()),
                 state.getTitle(), state.getDescription(), state.getPriority(), state.getDeadline(),
                 com.example.worktaskservice.domain.model.WorkTaskStatus.valueOf(state.getStatus().name()),
                 state.getAssigneeId(),
@@ -60,11 +63,12 @@ public class EventAvroMapper {
         return switch (event) {
             case WorkTaskCreatedEvent e -> {
                 var avro = new WorkTaskCreated();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 avro.setType(e.type().value());
                 avro.setSubject(e.subject().toUrn());
+                avro.setSource(e.source().value());
                 avro.setTitle(e.title());
                 avro.setDescription(e.description());
                 avro.setPriority(e.priority());
@@ -73,7 +77,7 @@ public class EventAvroMapper {
             }
             case WorkTaskAssignedEvent e -> {
                 var avro = new WorkTaskAssigned();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 avro.setAssigneeId(toFixed(e.assigneeId()));
@@ -81,7 +85,7 @@ public class EventAvroMapper {
             }
             case WorkTaskReassignedEvent e -> {
                 var avro = new WorkTaskReassigned();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 avro.setAssigneeId(toFixed(e.assigneeId()));
@@ -89,56 +93,56 @@ public class EventAvroMapper {
             }
             case WorkTaskUnassignedEvent e -> {
                 var avro = new WorkTaskUnassigned();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 yield avro;
             }
             case WorkTaskBegunEvent e -> {
                 var avro = new WorkTaskBegun();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 yield avro;
             }
             case WorkTaskPausedEvent e -> {
                 var avro = new WorkTaskPaused();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 yield avro;
             }
             case WorkTaskResumedEvent e -> {
                 var avro = new WorkTaskResumed();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 yield avro;
             }
             case WorkTaskCompletedEvent e -> {
                 var avro = new WorkTaskCompleted();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 yield avro;
             }
             case WorkTaskAbortedEvent e -> {
                 var avro = new WorkTaskAborted();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 yield avro;
             }
             case WorkTaskCancelledEvent e -> {
                 var avro = new WorkTaskCancelled();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 yield avro;
             }
             case WorkTaskCommandRejectedEvent e -> {
                 var avro = new WorkTaskCommandRejected();
-                avro.setWorkTaskId(toFixed(e.workTaskId()));
+                avro.setId(toFixed(e.id()));
                 avro.setCorrelationId(toFixed(e.correlationId()));
                 avro.setOccurredAt(toNanos(e.occurredAt()));
                 avro.setCommandType(e.commandType());

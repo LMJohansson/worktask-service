@@ -30,9 +30,11 @@ class WorkTaskGraphQLApiTest {
     @Inject
     PanacheWorkTaskRepository repository;
 
+    private static final Source SOURCE = new Source("urn:source:work.tasks:worktask");
+
     private WorkTask newTask(String title, WorkTaskStatus status, UUID assigneeId, int priority) {
         var now = Instant.now();
-        return WorkTask.reconstitute(UUID.randomUUID(), TYPE, new Subject(SUBJECT_TYPE, UUID.randomUUID()),
+        return WorkTask.reconstitute(UUID.randomUUID(), TYPE, new Subject(SUBJECT_TYPE, UUID.randomUUID()), SOURCE,
                 title, null, priority, null, status, assigneeId, now, now);
     }
 
@@ -58,7 +60,7 @@ class WorkTaskGraphQLApiTest {
         var task = newTask("Process refund", WorkTaskStatus.DRAFT, null, 3);
         persist(task);
 
-        String query = "{ workTask(id: \"" + task.id() + "\") { id title status priority } }";
+        String query = "{ workTask(id: \"" + task.id() + "\") { id source title status priority } }";
 
         given()
                 .contentType(ContentType.JSON)
@@ -68,6 +70,7 @@ class WorkTaskGraphQLApiTest {
         .then()
                 .statusCode(200)
                 .body("data.workTask.id", equalTo(task.id().toString()))
+                .body("data.workTask.source", equalTo(SOURCE.value()))
                 .body("data.workTask.title", equalTo("Process refund"))
                 .body("data.workTask.status", equalTo("DRAFT"))
                 .body("data.workTask.priority", equalTo(3));

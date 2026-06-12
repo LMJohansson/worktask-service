@@ -19,6 +19,7 @@ class EventAvroMapperStateTest {
         var deadline = now.plusSeconds(3600);
         var original = WorkTask.reconstitute(UUID.randomUUID(),
                 new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund"), subject,
+                new Source("urn:source:billing.invoices:payment:7"),
                 "title", "description", 5, deadline,
                 WorkTaskStatus.ASSIGNED, UUID.randomUUID(), now, now);
 
@@ -27,6 +28,7 @@ class EventAvroMapperStateTest {
         assertEquals(original.id(), roundTripped.id());
         assertEquals(original.type(), roundTripped.type());
         assertEquals(original.subject(), roundTripped.subject());
+        assertEquals(original.source(), roundTripped.source());
         assertEquals(original.title(), roundTripped.title());
         assertEquals(original.description(), roundTripped.description());
         assertEquals(original.priority(), roundTripped.priority());
@@ -43,6 +45,7 @@ class EventAvroMapperStateTest {
         var now = Instant.now();
         var original = WorkTask.reconstitute(UUID.randomUUID(),
                 new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund"), subject,
+                new Source("urn:source:work.tasks:worktask"),
                 "title", null, 0, null,
                 WorkTaskStatus.DRAFT, null, now, now);
 

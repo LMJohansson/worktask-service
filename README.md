@@ -97,13 +97,14 @@ command emits one of three distinct domain events depending on context:
 }%%
 flowchart TD
     subgraph cmd["Command-processing sub-topology"]
-        cmdTopic[("command topic")] --> cmdSource["command-source"]
+        cmdTopic[("command topic<br/>(keyed by subjectId)")] --> cmdSource["command-source"]
         cmdSource --> stp{{"state-transition<br/>StateTransitionProcessor"}}
-        store[("worktask-store<br/>KeyValueStore")] <-.-> stp
+        store[("worktask-store<br/>KeyValueStore (by id)")] <-.-> stp
+        index[("subject-active-index<br/>(by subjectId|type)")] <-.-> stp
         stp -- "unparsable / unmappable" --> dltSink["dead-letter-sink"]
-        stp -- "invalid transition →<br/>WorkTaskCommandRejected" --> eventSink["event-sink"]
-        stp -- "success → domain event" --> eventSink
-        stp -- "success → materialized state" --> compactSink["compact-sink"]
+        stp -- "invalid transition / duplicate create →<br/>WorkTaskCommandRejected" --> eventSink["event-sink"]
+        stp -- "success → domain event<br/>(keyed by subjectId)" --> eventSink
+        stp -- "success → materialized state<br/>(re-keyed by id)" --> compactSink["compact-sink"]
         dltSink --> dltTopic[("dead-letter topic")]
         eventSink --> eventTopic[("event topic")]
         compactSink --> compactTopic[("compact topic")]
@@ -129,6 +130,16 @@ achieved via `processing.guarantee=exactly_once_v2`. Only genuinely
 unparsable (undeserializable) records go to the dead-letter topic — commands
 that fail state-transition validation instead produce a
 `WorkTaskCommandRejected` event on the event topic.
+
+The **command and event topics are partitioned by `subjectId`**, so all activity
+for a subject is co-located and totally ordered. `worktask-store` is keyed by
+WorkTask `id` but co-partitioned by subject for free (a Streams store is local to
+its partition, and the record key — `subjectId` — picks the partition). A second
+`subject-active-index` store (keyed by `subjectId|type`) enforces that **at most
+one active task of a given type exists per subject**: a duplicate `Create` is
+rejected with reason `DUPLICATE_ACTIVE_TASK_FOR_SUBJECT`, and the index entry is
+cleared when a task reaches a terminal state. The `compact` projection is re-keyed
+by WorkTask `id` (one compacted entry per task).
 
 The `DatabaseSinkProcessor` is a second sub-topology in the same `Topology`:
 it consumes the `compact` topic independently (`compact-source`) and
@@ -213,12 +224,31 @@ differs by message direction:
   consumers must keep reading newer schema versions with their older schema,
   since they may upgrade later than this service does.
 
+Because each topic carries multiple message types, every topic's value subject
+(`<topic>-value`) is an **Avro union of schema references** under
+TopicNameStrategy (Confluent's recommended multi-type-topic pattern): each
+message type is registered as its own artifact and referenced from the union.
+The SerDes use `find-latest` + `auto-register=false` (and a custom datum
+provider that reads a union into its concrete branch); the internal Streams
+state store uses a registry-free serde. Schemas live in the `worktask` group and
+are registered out-of-band — on startup in dev/test, and via
+`./gradlew registerSchemas -Dapicurio.registry.url=<url>` for CI/prod. The
+Quarkus Apicurio Dev Service doesn't start for a Kafka-Streams app, so dev mode
+runs Apicurio through **Dev Services for Compose** (`compose-devservices.yml`,
+`localhost:8081`) and tests run it through Testcontainers
+(`ApicurioRegistryTestResource`).
+
 ### Identifiers
 
-WorkTask IDs are **UUID v7** (time-ordered, sortable) and serve as the Kafka
-record key (serialized as `String` via `toString()`). Other identifiers
-(assignee, correlation, subject) use UUID v4 or v7 as convenient. The domain
-model uses `UUID` directly — no wrapper types.
+WorkTask IDs are **UUID v7** (time-ordered, sortable). The **command and event
+topics are keyed by `subjectId`** (so all activity for a subject is co-located
+and ordered), while the **compact/state** records are keyed by the WorkTask `id`
+(one compacted entry per task). Commands carry only the WorkTask `id` in their
+payload; producers route them by setting the record key to the task's `subjectId`
+(learned from the `WorkTaskCreated` event / read model). Keys are serialized as
+`String` via `toString()`. Other identifiers (assignee, correlation, subject) use
+UUID v4 or v7 as convenient. The domain model uses `UUID` directly — no wrapper
+types.
 
 ## Developer guide
 
@@ -290,26 +320,17 @@ against a local [Minikube](https://minikube.sigs.k8s.io/) cluster.
 
 #### One-time cluster setup
 
+Strimzi Kafka Operator — installs cluster-scoped CRDs (Kafka, KafkaTopic, ...).
+A one-time step per cluster lifetime; intentionally NOT part of `skaffold dev`
+(re-applying/tearing down CRDs on every iteration is wasteful and racy).
+watchAnyNamespace=true is required: the operator runs in `kafka` but the Kafka
+cluster CR lives in `worktask`, and by default the operator only reconciles its
+own namespace — leaving the CR unreconciled (no bootstrap Service, so the app's
+wait-for-deps init container hangs on "bad address worktask-kafka-kafka-bootstrap").
 ```bash
-# --container-runtime=docker is required: Skaffold builds the app image into
-# Minikube's own Docker daemon (skaffold.yaml `local.push: false`), so the node's
-# runtime must be Docker for the kubelet to see that image. The Minikube default
-# (containerd) breaks this — Skaffold's `minikube docker-env` probe fails and any
-# image built into Docker is invisible to a containerd kubelet.
-minikube start --cpus=4 --memory=8192 --container-runtime=docker
-
-# Strimzi Kafka Operator — installs cluster-scoped CRDs (Kafka, KafkaTopic, ...).
-# A one-time step per cluster lifetime; intentionally NOT part of `skaffold dev`
-# (re-applying/tearing down CRDs on every iteration is wasteful and racy).
-# watchAnyNamespace=true is required: the operator runs in `kafka` but the Kafka
-# cluster CR lives in `worktask`, and by default the operator only reconciles its
-# own namespace — leaving the CR unreconciled (no bootstrap Service, so the app's
-# wait-for-deps init container hangs on "bad address worktask-kafka-kafka-bootstrap").
 helm repo add strimzi https://strimzi.io/charts/
 helm install strimzi-operator strimzi/strimzi-kafka-operator -n kafka --create-namespace \
   --set watchAnyNamespace=true
-
-kubectl create namespace worktask
 ```
 
 #### Iterating

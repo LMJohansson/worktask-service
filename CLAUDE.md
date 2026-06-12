@@ -67,8 +67,11 @@ Example: `work.tasks.worktask.public.worktask.command`
 Every WorkTask has:
 - **`type`** (`WorkTaskType`) — identifies the action to be performed, encoded as a URN: `urn:worktask-type:<domain>(.<subdomain>)?:<bounded-context>:<task-name>` (e.g. `urn:worktask-type:billing.invoices:payment:process-refund`). Immutable after creation.
 - **`subject`** (`Subject`) — the aggregate in another domain/bounded context that the task acts on. Groups a `SubjectType` (`urn:subject-type:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>`, e.g. `urn:subject-type:billing.invoices:payment:invoice`) and a `UUID`. Serialized as a single combined URN `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<uuid>` (via `Subject.toUrn()`/`fromUrn()`); the domain record keeps the `{SubjectType, UUID}` structure. Immutable after creation. The `worktask-type`/`subject-type`/`subject` URNs share a common NSS fragment defined in `domain/model/UrnFormat.java`.
+- **`source`** (`Source`) — the originating system/actor, a durable domain attribute set on `CreateWorkTask` (it is carried in the command, event, and state payloads — distinct from the CloudEvents `ce_source` envelope header). Encoded as a URN: `urn:source:<domain>(.<subdomain>)?:<bounded-context>(:<id>)?`, where the optional trailing `<id>` (a canonical UUID or a non-negative integer) identifies a specific originating instance — e.g. `urn:source:work.tasks:worktask`, `urn:source:billing.invoices:payment:42`. Validated by `domain/model/Source.java` (shares `UrnFormat.DOMAIN_CONTEXT`). Immutable after creation.
 - **`priority`** (`int`) — numeric priority ranking, defaults to `0`. Immutable after creation.
 - **`deadline`** (`Instant`, nullable) — optional due-by timestamp. Immutable after creation.
+
+At most one **active** (non-terminal) WorkTask of a given `type` may exist per `subject` at a time — see WorkTask Lifecycle and the Kafka Streams Topology (`subject-active-index`) below.
 
 ### WorkTask Lifecycle
 
@@ -94,27 +97,32 @@ Terminal states: `COMPLETED`, `ABORTED`, `CANCELLED`.
 
 Three separate domain events are emitted from the unified Assign command: `WorkTaskAssigned` (from DRAFT), `WorkTaskReassigned` (from ASSIGNED/IN_PROGRESS/PAUSED with non-null assignee), `WorkTaskUnassigned` (null assignee).
 
+**Uniqueness rule:** `Create` is rejected (a `WorkTaskCommandRejected` event with reason `DUPLICATE_ACTIVE_TASK_FOR_SUBJECT`) when an active (non-terminal) WorkTask of the same `type` already exists on the same `subject`. The check is serialized because the command topic is partitioned by `subjectId` (see Keys and Identifiers), and is backed by the `subject-active-index` state store (keyed by `<subjectId>|<type>`), populated on create and cleared when a task reaches a terminal state.
+
 ### Kafka Streams Topology
 
 ```
-[command topic]
+[command topic]  (keyed by subjectId)
       │
       ├── (unparsable message) ──► [dead-letter topic]
       │
       ▼
  StateTransitionProcessor
-      │  loads current WorkTask from KeyValueStore, applies transition
+      │  loads current WorkTask from KeyValueStore (by WorkTask id), applies transition
+      │  consults/updates subject-active-index (by <subjectId>|<type>) for the uniqueness rule
       │
-      ├── (invalid transition) ──► [event topic]  — WorkTaskCommandRejected event
+      ├── (invalid transition / duplicate create) ──► [event topic]  — WorkTaskCommandRejected event
       │
-      ├──► [event topic]    — domain event (result of successful command)
-      └──► [compact topic]  — full materialized WorkTask state (same key)
+      ├──► [event topic]    — domain event (result of successful command); keyed by subjectId
+      └──► [compact topic]  — full materialized WorkTask state; re-keyed by WorkTask id
                  │            (both writes in one Kafka Streams transaction)
                  ▼
             DatabaseSinkProcessor ──► persistent database (read model / query side)
 ```
 
 Atomicity between the `event` and `compact` topics is achieved via Kafka Streams exactly-once semantics — configure `processing.guarantee=exactly_once_v2`. The KeyValueStore is the authoritative in-flight state between commands.
+
+The command and event topics are partitioned by `subjectId`, so all activity for a subject is co-located on one partition and totally ordered. The state store (`worktask-store`) is keyed by **WorkTask id** but is co-partitioned by subject for free — a Streams store is local to its partition, and the record key (`subjectId`) decides the partition, so all of a subject's tasks share one local store while each is addressed by its id. The `subject-active-index` store backs the uniqueness rule under the same co-partitioning. The compact topic is re-keyed by WorkTask id (one compacted entry per task).
 
 #### Why the state store and compact topic are distinct
 
@@ -128,11 +136,13 @@ The `StateTransitionProcessor` writes the materialized state in two places — `
 
 A read-only **GraphQL query API** (`quarkus-smallrye-graphql`, exposed at `/graphql`) sits on top of this read model — see `infrastructure/graphql/` in the package structure below.
 
-Only unparsable (undeserializable) messages go to the dead-letter topic. Invalid commands that fail state-transition validation produce a rejection event on the event topic instead.
+Only unparsable (undeserializable) messages go to the dead-letter topic. Invalid commands that fail state-transition validation (or a duplicate `Create`) produce a rejection event on the event topic instead.
 
 ### Keys and Identifiers
 
-- WorkTask IDs are **UUID v7** (time-ordered, sortable) used as the Kafka record key
+- WorkTask IDs are **UUID v7** (time-ordered, sortable)
+- **Command and event** topics are keyed by **`subjectId`** (the subject's UUID) — co-locating and ordering all activity for a subject. **Compact/state** records are keyed by **WorkTask id** (one compacted entry per task). `subjectId` is immutable for a task's lifetime, so per-task ordering is preserved while per-subject ordering is gained.
+- Commands carry only the WorkTask `id` in their payload (not the subject); producers route a command by setting its Kafka record key to the task's `subjectId` (learned from the `WorkTaskCreated` event / read model). `CreateWorkTask` carries the full subject.
 - Other identifiers (assignee, correlation, subject) use UUID v4 or v7 as convenient
 - Kafka record keys are serialized as `String` (UUID `toString()`)
 - Domain model uses `UUID` directly — no wrapper types
@@ -151,7 +161,7 @@ All Kafka records (event topic + compact topic) use the **Kafka Protocol Binding
 | `ce_subject`         | the combined Subject URN — e.g. `urn:subject:billing.invoices:payment:invoice:550e8400-…`                                                                                          |
 | `ce_datacontenttype` | `application/avro`                                                                                                                                                                |
 | `ce_dataschema`      | `{SCHEMA_REGISTRY_URL}/apis/registry/v2/groups/default/artifacts/{avro.schema.fullName}`                                                                                          |
-| `ce_partitionkey`    | WorkTask ID (UUID string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the Kafka record key          |
+| `ce_partitionkey`    | `subjectId` (UUID string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the event Kafka record key (events are partitioned by subject) |
 | `ce_correlationid`   | the WorkTask `correlationId` (UUID string) — [Correlation extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/correlation.md); groups the business transaction |
 | `ce_causationid`     | the inbound command's `ce_id` — Correlation extension; the id of the command that directly caused this event (omitted if the inbound `ce_id` is absent)                            |
 | `ce_traceparent`     | W3C Trace Context — [Distributed Tracing extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/distributed-tracing.md); propagated from inbound command |
@@ -177,7 +187,7 @@ Define the `UUID` fixed type inline on first use within each schema file; refere
 ```
 src/main/avro/
   commands/
-    CreateWorkTask.avsc      ← type, subject, title, description, priority, deadline
+    CreateWorkTask.avsc      ← type, subject, source, title, description, priority, deadline
     AssignWorkTask.avsc      ← assigneeId (nullable — null means unassign)
     BeginWorkTask.avsc
     PauseWorkTask.avsc
@@ -186,7 +196,7 @@ src/main/avro/
     AbortWorkTask.avsc       ← reason (nullable)
     CancelWorkTask.avsc      ← reason (nullable)
   events/
-    WorkTaskCreated.avsc     ← type, subject, title, description, priority, deadline
+    WorkTaskCreated.avsc     ← type, subject, source, title, description, priority, deadline
     WorkTaskAssigned.avsc
     WorkTaskReassigned.avsc
     WorkTaskUnassigned.avsc
@@ -198,17 +208,44 @@ src/main/avro/
     WorkTaskCancelled.avsc
     WorkTaskCommandRejected.avsc  ← rejectionReason, commandType
   state/
-    WorkTask.avsc            ← compact topic payload (full materialized state)
+    WorkTask.avsc            ← compact topic payload (full materialized state; includes source)
 ```
 
-All command schemas share base fields: `workTaskId` (UUID), `correlationId` (UUID).
-All event schemas share base fields: `workTaskId` (UUID), `correlationId` (UUID), `occurredAt` (timestamp-nanos).
+All command schemas share base fields: `id` (UUID — the WorkTask id), `correlationId` (UUID).
+All event schemas share base fields: `id` (UUID), `correlationId` (UUID), `occurredAt` (timestamp-nanos).
 
 Namespace convention: `com.example.worktaskservice.<commands|events|state>`
 
 Use Schema Registry (Apicurio). Compatibility mode differs by message direction:
 - **Commands** (inbound, consumed by this service): `BACKWARD` — this service must keep reading commands written against older schema versions as producers upgrade independently.
 - **Events and state** (outbound, produced by this service): `FORWARD` — downstream consumers must keep reading new schema versions with their older schema, since they may upgrade later than this service does.
+
+#### Multi-type topics: union of schema references
+
+The `command` (8 types) and `event` (11 types) topics are heterogeneous. Following the Confluent
+["multiple event types in one topic"](https://www.confluent.io/blog/multiple-event-types-in-the-same-kafka-topic/#summary)
+pattern under TopicNameStrategy (Apicurio `TopicIdStrategy`), each multi-type topic's value schema is an
+**Avro union of schema references**: every message type is registered as its own artifact, and a union
+artifact at `<topic>-value` references them. This keeps one subject per topic with per-type compatibility.
+
+`<topic>-value` artifacts (group **`worktask`**, not `default` — Apicurio normalises the `default` group to
+a null reference groupId that the serde's reference resolver can't look up):
+- `…command-value` and `…dead-letter-value` → union of the 8 command types
+- `…event-value` → union of the 11 event types
+- `…compact-value` → the single `state.WorkTask` schema (single-type, no union)
+
+**SerDes** (`AvroSerdeFactory`): default `TopicIdStrategy`, `artifact.group-id=worktask`, `find-latest=true`
+(the serializer writes against the latest `<topic>-value` union; the deserializer resolves the branch via
+the message's globalId), `auto-register=false` (registration is out-of-band), and a custom
+`UnionAwareAvroDatumProvider` — the stock provider can't read a union into its concrete branch
+`SpecificRecord`. The internal Streams state-store changelog must NOT use this registry-backed serde (no
+public `<changelog>-value` union exists); the store uses a fixed-schema, registry-free `LocalAvroSerde`.
+
+**Registration** (`SchemaRegistrar`, Apicurio v3 REST API, idempotent): in dev/test by `SchemaRegistrarStartup`
+(`@UnlessBuildProfile("prod")`) against the registry; in CI/prod by the Gradle `registerSchemas` task
+(`SchemaRegistrarMain`). Tests provide the registry via a Testcontainers `QuarkusTestResource`
+(`ApicurioRegistryTestResource`) — the Quarkus Apicurio Dev Service only auto-starts for messaging-channel
+apps, not Kafka Streams. `WorkTaskTopologyDedupIT` exercises the whole path end-to-end.
 
 ### Package Structure
 
@@ -220,9 +257,11 @@ src/main/java/com/example/worktaskservice/
 │   │   ├── WorkTask.java            ← aggregate root (UUID id, WorkTaskType type, Subject subject, …)
 │   │   ├── WorkTaskStatus.java      ← enum: DRAFT, ASSIGNED, IN_PROGRESS, PAUSED,
 │   │   │                               COMPLETED, ABORTED, CANCELLED
-│   │   ├── WorkTaskType.java        ← validated string: <domain>(.<subdomain>)?:<bc>/<task-name>
-│   │   ├── SubjectType.java         ← same format as WorkTaskType; shared validation utility
-│   │   └── Subject.java             ← record: SubjectType type + UUID id
+│   │   ├── WorkTaskType.java        ← validated URN: urn:worktask-type:<domain>(.<subdomain>)?:<bc>:<task-name>
+│   │   ├── SubjectType.java         ← same NSS as WorkTaskType; shared validation utility
+│   │   ├── Subject.java             ← record: SubjectType type + UUID id
+│   │   ├── Source.java              ← validated URN: urn:source:<domain>(.<subdomain>)?:<bc>(:<uuid|number>)?
+│   │   └── UrnFormat.java           ← shared URN regex fragments (NSS, DOMAIN_CONTEXT, UUID)
 │   ├── command/                     ← command records (mapped FROM Avro-generated classes)
 │   ├── event/                       ← domain event records
 │   └── exception/
@@ -240,9 +279,14 @@ src/main/java/com/example/worktaskservice/
 └── infrastructure/                  ← Quarkus / framework adapters
     ├── kafka/
     │   ├── topology/
-    │   │   └── WorkTaskTopologyProducer.java  ← @Produces Topology bean;
-    │   │                                         StateTransitionProcessor + DatabaseSinkProcessor
+    │   │   ├── WorkTaskTopologyProducer.java  ← @Produces Topology bean;
+    │   │   │                                     StateTransitionProcessor + DatabaseSinkProcessor
+    │   │   └── WorkTaskCommandDecider.java    ← pure uniqueness-rule + state-machine decision (unit-tested)
     │   ├── serde/
+    │   │   ├── AvroSerdeFactory.java          ← Apicurio union/find-latest serde + registry-free store serde
+    │   │   ├── UnionAwareAvroDatumProvider.java ← reads a union into its concrete branch SpecificRecord
+    │   │   ├── LocalAvroSerde.java            ← registry-free fixed-schema serde (internal state store)
+    │   │   └── SchemaRegistrar{,Startup,Main}.java ← register member + union-of-references schemas
     │   └── mapper/
     │       ├── CommandAvroMapper.java   ← Avro SpecificRecord → domain command; reads CE trace headers
     │       └── EventAvroMapper.java     ← domain event ⇄ Avro SpecificRecord (incl. state ⇄ domain); builds ce_ headers
@@ -273,4 +317,13 @@ implementation("io.quarkus:quarkus-smallrye-health")
 implementation("io.quarkus:quarkus-smallrye-graphql")           // GraphQL query API over the read model (/graphql, /q/graphql-ui)
 ```
 
-Quarkus Dev Services auto-provisions Kafka, PostgreSQL, and Apicurio Schema Registry in dev and test mode — no manual Docker Compose setup required.
+Quarkus Dev Services auto-provisions Kafka and PostgreSQL in dev and test mode. The Quarkus **Apicurio
+Dev Service does not start** for this Kafka-Streams app (it only triggers for SmallRye messaging-channel
+apps), so Apicurio is provided explicitly:
+- **Dev mode** (`quarkusDev`): **Dev Services for Compose** starts `compose-devservices.yml` (Apicurio on
+  `localhost:8081`, matching the default `SCHEMA_REGISTRY_URL`).
+- **Tests**: a Testcontainers `QuarkusTestResource` (`ApicurioRegistryTestResource`); the compose stack is
+  disabled under the test profile.
+
+Schema registration is out-of-band: dev/test register on startup (`SchemaRegistrarStartup`); CI/prod run
+`./gradlew registerSchemas -Dapicurio.registry.url=<base-url>` (the `SchemaRegistrarMain` entry point).

@@ -21,9 +21,11 @@ class PanacheWorkTaskRepositoryTest {
     @Inject
     PanacheWorkTaskRepository repository;
 
+    private static final Source SOURCE = new Source("urn:source:work.tasks:worktask");
+
     private WorkTask newTask(WorkTaskStatus status, UUID assigneeId, UUID subjectId) {
         var now = Instant.now();
-        return WorkTask.reconstitute(UUID.randomUUID(), TYPE, new Subject(SUBJECT_TYPE, subjectId),
+        return WorkTask.reconstitute(UUID.randomUUID(), TYPE, new Subject(SUBJECT_TYPE, subjectId), SOURCE,
                 "title", null, 0, null, status, assigneeId, now, now);
     }
 
@@ -60,12 +62,16 @@ class PanacheWorkTaskRepositoryTest {
     @Test
     @TestTransaction
     void paginatesResults() {
+        // Scope the query to a single shared subject so the count is independent of any other
+        // rows committed to the read model (e.g. by the streams topology in other tests).
+        UUID subjectId = UUID.randomUUID();
         for (int i = 0; i < 5; i++) {
-            repository.save(newTask(WorkTaskStatus.DRAFT, null, UUID.randomUUID()));
+            repository.save(newTask(WorkTaskStatus.DRAFT, null, subjectId));
         }
+        var filter = new WorkTaskFilter(null, null, null, subjectId, null);
 
-        var firstPage = repository.findAll(WorkTaskFilter.EMPTY, 0, 2);
-        var secondPage = repository.findAll(WorkTaskFilter.EMPTY, 1, 2);
+        var firstPage = repository.findAll(filter, 0, 2);
+        var secondPage = repository.findAll(filter, 1, 2);
 
         assertEquals(5, firstPage.totalCount());
         assertEquals(2, firstPage.items().size());

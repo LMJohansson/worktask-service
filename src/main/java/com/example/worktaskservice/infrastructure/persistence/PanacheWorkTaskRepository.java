@@ -59,6 +59,7 @@ public class PanacheWorkTaskRepository
         entity.type        = task.type().value();
         entity.subjectType = task.subject().type().value();
         entity.subjectId   = task.subject().id();
+        entity.source      = task.source().value();
         entity.title       = task.title();
         entity.description = task.description();
         entity.priority    = task.priority();
@@ -75,6 +76,7 @@ public class PanacheWorkTaskRepository
                 e.id,
                 new WorkTaskType(e.type),
                 new Subject(new SubjectType(e.subjectType), e.subjectId),
+                new Source(e.source),
                 e.title, e.description, e.priority, e.deadline, e.status, e.assigneeId,
                 e.createdAt, e.updatedAt);
     }

@@ -16,6 +16,10 @@
       "type": "string"
     },
     {
+      "name": "source",
+      "type": "string"
+    },
+    {
       "name": "title",
       "type": "string"
     },

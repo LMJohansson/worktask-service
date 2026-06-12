@@ -4,7 +4,7 @@
   "name": "WorkTaskUnassigned",
   "fields": [
     {
-      "name": "workTaskId",
+      "name": "id",
       "type": {"type": "fixed", "size": 16, "name": "UUID", "logicalType": "uuid"}
     },
     {

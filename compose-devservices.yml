@@ -1,0 +1,13 @@
+# Quarkus Dev Services for Compose starts this automatically in dev mode (`./gradlew quarkusDev`).
+# The built-in Quarkus Apicurio Dev Service does NOT start for a Kafka-Streams app (it only triggers
+# for SmallRye messaging channels), so the registry is provided here instead. Host port 8081 matches
+# the default `SCHEMA_REGISTRY_URL=http://localhost:8081`, so no extra config is needed; the app's
+# SchemaRegistrarStartup waits for readiness and registers the union schemas on boot.
+#
+# Disabled under the test profile (%test.quarkus.compose.devservices.enabled=false) — tests provide
+# the registry via the Testcontainers ApicurioRegistryTestResource instead.
+services:
+  apicurio-registry:
+    image: apicurio/apicurio-registry:3.1.7
+    ports:
+      - "8081:8080"

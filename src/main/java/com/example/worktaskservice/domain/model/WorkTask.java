@@ -12,6 +12,7 @@ public final class WorkTask {
     private final UUID id;
     private final WorkTaskType type;
     private final Subject subject;
+    private final Source source;
     private final String title;
     private final String description;
     private final int priority;
@@ -21,12 +22,13 @@ public final class WorkTask {
     private final Instant createdAt;
     private Instant updatedAt;
 
-    private WorkTask(UUID id, WorkTaskType type, Subject subject,
+    private WorkTask(UUID id, WorkTaskType type, Subject subject, Source source,
                      String title, String description, int priority, Instant deadline,
                      Instant createdAt) {
         this.id = id;
         this.type = type;
         this.subject = subject;
+        this.source = source;
         this.title = title;
         this.description = description;
         this.priority = priority;
@@ -39,17 +41,17 @@ public final class WorkTask {
 
     public static WorkTaskCreatedEvent create(CreateWorkTaskCommand cmd, Instant now) {
         return new WorkTaskCreatedEvent(
-                cmd.workTaskId(), cmd.correlationId(), now,
-                cmd.type(), cmd.subject(), cmd.title(), cmd.description(),
+                cmd.id(), cmd.correlationId(), now,
+                cmd.type(), cmd.subject(), cmd.source(), cmd.title(), cmd.description(),
                 cmd.priority(), cmd.deadline());
     }
 
-    public static WorkTask reconstitute(UUID id, WorkTaskType type, Subject subject,
+    public static WorkTask reconstitute(UUID id, WorkTaskType type, Subject subject, Source source,
                                         String title, String description,
                                         int priority, Instant deadline,
                                         WorkTaskStatus status, UUID assigneeId,
                                         Instant createdAt, Instant updatedAt) {
-        var task = new WorkTask(id, type, subject, title, description, priority, deadline, createdAt);
+        var task = new WorkTask(id, type, subject, source, title, description, priority, deadline, createdAt);
         task.status = status;
         task.assigneeId = assigneeId;
         task.updatedAt = updatedAt;
@@ -137,6 +139,7 @@ public final class WorkTask {
     public UUID id() { return id; }
     public WorkTaskType type() { return type; }
     public Subject subject() { return subject; }
+    public Source source() { return source; }
     public String title() { return title; }
     public String description() { return description; }
     public int priority() { return priority; }

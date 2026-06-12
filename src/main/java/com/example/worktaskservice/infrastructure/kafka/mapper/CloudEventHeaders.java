@@ -1,7 +1,7 @@
 package com.example.worktaskservice.infrastructure.kafka.mapper;
 
 import com.example.worktaskservice.domain.event.WorkTaskEvent;
-import com.example.worktaskservice.domain.model.WorkTask;
+import com.example.worktaskservice.domain.model.Subject;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
@@ -22,7 +22,7 @@ final class CloudEventHeaders {
 
     private CloudEventHeaders() {}
 
-    static Headers forEvent(WorkTaskEvent event, WorkTask task, SpecificRecord avroRecord,
+    static Headers forEvent(WorkTaskEvent event, Subject subject, SpecificRecord avroRecord,
                             String schemaRegistryUrl, String traceparent, String tracestate,
                             String causationId, String source) {
         var headers = new RecordHeaders();
@@ -32,12 +32,13 @@ final class CloudEventHeaders {
         set(headers, "ce_source", source != null ? source : DEFAULT_SOURCE);
         set(headers, "ce_id", UUID.randomUUID().toString());
         set(headers, "ce_time", RFC3339.format(event.occurredAt()));
-        set(headers, "ce_subject", task.subject().toUrn());
+        set(headers, "ce_subject", subject.toUrn());
         set(headers, "ce_datacontenttype", "application/avro");
         set(headers, "ce_dataschema", schemaRegistryUrl
-                + "/apis/registry/v2/groups/default/artifacts/"
+                + "/apis/registry/v3/groups/worktask/artifacts/"
                 + avroRecord.getSchema().getFullName());
-        set(headers, "ce_partitionkey", task.id().toString());
+        // Events are partitioned by subject; ce_partitionkey matches the Kafka record key (subjectId).
+        set(headers, "ce_partitionkey", subject.id().toString());
         // CloudEvents Correlation extension: correlationid groups the business transaction,
         // causationid is the ce_id of the command that directly caused this event.
         set(headers, "ce_correlationid", event.correlationId().toString());

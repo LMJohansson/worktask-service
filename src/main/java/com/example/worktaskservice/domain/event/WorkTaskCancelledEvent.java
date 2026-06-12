@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record WorkTaskCancelledEvent(
-        UUID workTaskId,
+        UUID id,
         UUID correlationId,
         Instant occurredAt
 ) implements WorkTaskEvent {}
