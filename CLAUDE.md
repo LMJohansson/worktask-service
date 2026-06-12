@@ -140,12 +140,21 @@ Only unparsable (undeserializable) messages go to the dead-letter topic. Invalid
 
 ### Keys and Identifiers
 
-- WorkTask IDs are **UUID v7** (time-ordered, sortable)
 - **Command and event** topics are keyed by **`subjectId`** (the subject's UUID) — co-locating and ordering all activity for a subject. **Compact/state** records are keyed by **WorkTask id** (one compacted entry per task). `subjectId` is immutable for a task's lifetime, so per-task ordering is preserved while per-subject ordering is gained.
 - Commands carry only the WorkTask `id` in their payload (not the subject); producers route a command by setting its Kafka record key to the task's `subjectId` (learned from the `WorkTaskCreated` event / read model). `CreateWorkTask` carries the full subject.
-- Other identifiers (assignee, correlation, subject) use UUID v4 or v7 as convenient
 - Kafka record keys are serialized as `String` (UUID `toString()`)
 - Domain model uses `UUID` directly — no wrapper types
+
+Identifier formats:
+
+| Identifier              | Rule                                                                                  |
+|-------------------------|---------------------------------------------------------------------------------------|
+| `id` (WorkTaskId)       | SHOULD be **UUIDv7** (time-ordered, sortable)                                          |
+| `correlationId`         | MAY be **UUIDv4, v5, or v7**                                                           |
+| `subjectId`             | a **UUID** (any version) — the numeric form is not (yet) supported by this service     |
+| `assigneeId`            | a UUID (any version)                                                                   |
+| `ce_id` (CloudEvents)   | this service **emits UUIDv4**; an inbound command's `ce_id` MAY be any UUID version    |
+| Source instance id      | the optional trailing id in `urn:source:…:<id>` is a **UUID (any version) or a positive integer (arbitrary length)** |
 
 ### CloudEvents and Observability
 
@@ -155,19 +164,19 @@ All Kafka records (event topic + compact topic) use the **Kafka Protocol Binding
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ce_specversion`     | `1.0`                                                                                                                                                                             |
 | `ce_type`            | `com.example.worktaskservice.worktask.<verb>.v1`                                                                                                                                  |
-| `ce_source`          | propagated from the inbound command's `ce_source`; falls back to `urn:source:work.tasks:worktask` (this bounded context, `urn:source:<domain>(.<subdomain>):<bounded-context>`) when absent |
+| `ce_source`          | this service's identity `urn:source:work.tasks:worktask` (this bounded context, `urn:source:<domain>(.<subdomain>)?:<bounded-context>`) — the message origin of emitted records. **Not** propagated from the inbound command; the originating *business* source is the WorkTask `source` payload attribute. |
 | `ce_id`              | UUID v4 (per-event; distinct from WorkTask ID)                                                                                                                                    |
 | `ce_time`            | RFC 3339 timestamp                                                                                                                                                                |
 | `ce_subject`         | the combined Subject URN — e.g. `urn:subject:billing.invoices:payment:invoice:550e8400-…`                                                                                          |
 | `ce_datacontenttype` | `application/avro`                                                                                                                                                                |
-| `ce_dataschema`      | `{SCHEMA_REGISTRY_URL}/apis/registry/v2/groups/default/artifacts/{avro.schema.fullName}`                                                                                          |
+| `ce_dataschema`      | `{SCHEMA_REGISTRY_URL}/apis/registry/v3/groups/worktask/artifacts/{avro.schema.fullName}`                                                                                          |
 | `ce_partitionkey`    | `subjectId` (UUID string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the event Kafka record key (events are partitioned by subject) |
 | `ce_correlationid`   | the WorkTask `correlationId` (UUID string) — [Correlation extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/correlation.md); groups the business transaction |
 | `ce_causationid`     | the inbound command's `ce_id` — Correlation extension; the id of the command that directly caused this event (omitted if the inbound `ce_id` is absent)                            |
 | `ce_traceparent`     | W3C Trace Context — [Distributed Tracing extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/distributed-tracing.md); propagated from inbound command |
 | `ce_tracestate`      | W3C Trace Context — Distributed Tracing extension; propagated from inbound command (if present)                                                                                   |
 
-Inbound command records carry the same `ce_` headers. The topology extracts `ce_traceparent`/`ce_tracestate` to restore OTel context before processing, the inbound `ce_id` to set `ce_causationid`, and the inbound `ce_source` to propagate as the `ce_source` of the resulting event(s). Use OTel semantic conventions for span and metric naming (`messaging.*`, `db.*`).
+Inbound command records carry the same `ce_` headers. The topology extracts `ce_traceparent`/`ce_tracestate` to restore OTel context before processing and the inbound `ce_id` to set `ce_causationid`. The inbound `ce_source` is **not** propagated — emitted events always carry this service's `ce_source` (the originating business source is the payload `source` attribute). Use OTel semantic conventions for span and metric naming (`messaging.*`, `db.*`).
 
 ### Avro Schemas
 

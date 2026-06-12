@@ -32,8 +32,7 @@ class CloudEventHeadersTest {
         var task = task(id);
         var event = new WorkTaskBegunEvent(id, correlationId, Instant.now());
 
-        Headers headers = mapper.toAvro(event, task.subject(), null, null, causationId, "urn:source:billing:invoicing")
-                .headers();
+        Headers headers = mapper.toAvro(event, task.subject(), null, null, causationId).headers();
 
         assertEquals(task.subject().toUrn(), header(headers, "ce_subject"));
         // Events are partitioned by subject: ce_partitionkey is the subjectId, not the WorkTask id.
@@ -43,16 +42,15 @@ class CloudEventHeadersTest {
     }
 
     @Test
-    void propagatesInboundSourceAndFallsBackToServiceIdentity() {
+    void tagsEventsWithThisServiceSource() {
+        // ce_source identifies this bounded context as the message origin; it is NOT propagated from the
+        // inbound command (the originating business source is the WorkTask `source` payload attribute).
         var id = UUID.randomUUID();
         var event = new WorkTaskBegunEvent(id, UUID.randomUUID(), Instant.now());
 
-        Headers propagated = mapper.toAvro(event, task(id).subject(), null, null, null, "urn:source:billing:invoicing")
-                .headers();
-        assertEquals("urn:source:billing:invoicing", header(propagated, "ce_source"));
+        Headers headers = mapper.toAvro(event, task(id).subject(), null, null, null).headers();
 
-        Headers fallback = mapper.toAvro(event, task(id).subject(), null, null, null, null).headers();
-        assertEquals("urn:source:work.tasks:worktask", header(fallback, "ce_source"));
+        assertEquals("urn:source:work.tasks:worktask", header(headers, "ce_source"));
     }
 
     @Test
@@ -63,7 +61,7 @@ class CloudEventHeadersTest {
         var event = new WorkTaskCommandRejectedEvent(id, correlationId, Instant.now(),
                 "BeginWorkTask", "invalid transition");
 
-        Headers headers = mapper.toAvro(event, task(id).subject(), null, null, causationId, null).headers();
+        Headers headers = mapper.toAvro(event, task(id).subject(), null, null, causationId).headers();
 
         assertEquals(correlationId.toString(), header(headers, "ce_correlationid"));
         assertEquals(causationId, header(headers, "ce_causationid"));
@@ -74,7 +72,7 @@ class CloudEventHeadersTest {
         var id = UUID.randomUUID();
         var event = new WorkTaskBegunEvent(id, UUID.randomUUID(), Instant.now());
 
-        Headers headers = mapper.toAvro(event, task(id).subject(), null, null, null, null).headers();
+        Headers headers = mapper.toAvro(event, task(id).subject(), null, null, null).headers();
 
         assertNull(headers.lastHeader("ce_causationid"));
         assertNotNull(headers.lastHeader("ce_correlationid"));

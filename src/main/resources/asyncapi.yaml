@@ -613,7 +613,7 @@ components:
         Written to the compact topic in the same Kafka Streams transaction as
         the domain event resulting from the same command (exactly-once
         semantics). Contains the complete WorkTask aggregate: identifiers,
-        immutable creation-time properties (`type`, `subject`, `title`,
+        immutable creation-time properties (`type`, `subject`, `source`, `title`,
         `description`, `priority`, `deadline`), current `status`, `assigneeId`,
         and `createdAt`/`updatedAt` timestamps. `ce_type`:
         `com.example.worktaskservice.worktask.state.v1`.
@@ -677,14 +677,19 @@ components:
             - com.example.worktaskservice.worktask.commandrejected.v1
         ce_source:
           type: string
-          const: /worktaskservice
-          description: Source URI-reference identifying this service.
+          const: urn:source:work.tasks:worktask
+          description: |
+            This service's identity (`urn:source:<domain>(.<subdomain>)?:<bounded-context>`) —
+            the message origin of emitted records. NOT propagated from the inbound
+            command; the originating *business* source is the WorkTask `source`
+            payload attribute.
         ce_id:
           type: string
           format: uuid
           description: |
-            Unique identifier of this CloudEvent (UUID v4) — generated
-            per-record and distinct from the WorkTask ID.
+            Unique identifier of this CloudEvent — generated per-record and distinct
+            from the WorkTask id. This service emits UUIDv4; an inbound command's
+            `ce_id` MAY be a UUID of any version.
         ce_time:
           type: string
           format: date-time
@@ -692,9 +697,10 @@ components:
         ce_subject:
           type: string
           description: |
-            `{subjectType}/{subjectId}` — the aggregate in another bounded
-            context that the WorkTask acts on, e.g.
-            `billing.invoices:payment/invoice/550e8400-e29b-41d4-a716-446655440000`.
+            The combined Subject URN
+            `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<uuid>` —
+            the aggregate in another bounded context that the WorkTask acts on, e.g.
+            `urn:subject:billing.invoices:payment:invoice:550e8400-e29b-41d4-a716-446655440000`.
         ce_datacontenttype:
           type: string
           const: application/avro

@@ -174,7 +174,7 @@ public class WorkTaskTopologyProducer {
 
                 case WorkTaskCommandDecider.Rejected rejected ->
                     forwardRejection(record.key(), rejected, traceparent, tracestate,
-                            inbound.causationId(), inbound.source(), now);
+                            inbound.causationId(), now);
 
                 case WorkTaskCommandDecider.Accepted accepted -> {
                     WorkTask state = accepted.state();
@@ -190,7 +190,7 @@ public class WorkTaskTopologyProducer {
 
                     EventAvroMapper.OutboundEvent outbound =
                             eventMapper.toAvro(accepted.event(), state.subject(), traceparent, tracestate,
-                                    inbound.causationId(), inbound.source());
+                                    inbound.causationId());
                     // Events keep the subjectId key; the compact projection is re-keyed by WorkTask id.
                     context.forward(
                             new Record<>(record.key(), outbound.avro(), now.toEpochMilli(), outbound.headers()),
@@ -204,9 +204,9 @@ public class WorkTaskTopologyProducer {
 
         private void forwardRejection(String recordKey, WorkTaskCommandDecider.Rejected rejected,
                                       String traceparent, String tracestate, String causationId,
-                                      String source, Instant now) {
+                                      Instant now) {
             EventAvroMapper.OutboundEvent outbound = eventMapper.toAvro(
-                    rejected.event(), rejected.subject(), traceparent, tracestate, causationId, source);
+                    rejected.event(), rejected.subject(), traceparent, tracestate, causationId);
             context.forward(
                     new Record<>(recordKey, outbound.avro(), now.toEpochMilli(), outbound.headers()),
                     EVENT_SINK);

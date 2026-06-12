@@ -42,18 +42,23 @@ private topic exists for operational dead-lettering:
 
 Every `WorkTask` has:
 
-- **`type`** (`WorkTaskType`) — the action to be performed, format
-  `<domain>(.<subdomain>)?:<bounded-context>/<task-name>`
-  (e.g. `billing.invoices:payment/process-refund`). Immutable.
-- **`subject`** (`Subject`) — the aggregate in another bounded context that
-  the task acts on: a `SubjectType` (same format as `WorkTaskType`) plus a
-  `UUID`. Immutable.
+- **`type`** (`WorkTaskType`) — the action to be performed, a URN
+  `urn:worktask-type:<domain>(.<subdomain>)?:<bounded-context>:<task-name>`
+  (e.g. `urn:worktask-type:billing.invoices:payment:process-refund`). Immutable.
+- **`subject`** (`Subject`) — the aggregate in another bounded context that the
+  task acts on: a `SubjectType` (`urn:subject-type:…:<aggregate>`) plus a `UUID`,
+  serialized as the combined URN
+  `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<uuid>`. Immutable.
+- **`source`** (`Source`) — the originating system/actor, a URN
+  `urn:source:<domain>(.<subdomain>)?:<bounded-context>(:<id>)?` (optional trailing
+  instance id — a UUID or a positive integer). The durable business origin, distinct
+  from the `ce_source` envelope header. Immutable.
 - **`title`** / **`description`** — descriptive text; `description` is optional.
 - **`priority`** (`int`) — numeric priority ranking, defaults to `0`. Immutable.
 - **`deadline`** (`Instant`, optional) — due-by timestamp. Immutable.
 
-`type`, `subject`, `title`, `description`, `priority`, and `deadline` are all
-set at creation time and never change afterward.
+`type`, `subject`, `source`, `title`, `description`, `priority`, and `deadline`
+are all set at creation time and never change afterward.
 
 ### Lifecycle / state machine
 
@@ -184,7 +189,7 @@ contract, including concrete `ce_type` values.
 ```
 src/main/java/com/example/worktaskservice/
 ├── domain/            ← pure domain model, no framework dependencies
-│   ├── model/         ← WorkTask, WorkTaskStatus, WorkTaskType, Subject, SubjectType
+│   ├── model/         ← WorkTask, WorkTaskStatus, WorkTaskType, Subject, SubjectType, Source
 │   ├── command/       ← command records (mapped from Avro-generated classes)
 │   ├── event/         ← domain event records
 │   └── exception/
@@ -246,9 +251,13 @@ and ordered), while the **compact/state** records are keyed by the WorkTask `id`
 (one compacted entry per task). Commands carry only the WorkTask `id` in their
 payload; producers route them by setting the record key to the task's `subjectId`
 (learned from the `WorkTaskCreated` event / read model). Keys are serialized as
-`String` via `toString()`. Other identifiers (assignee, correlation, subject) use
-UUID v4 or v7 as convenient. The domain model uses `UUID` directly — no wrapper
-types.
+`String` via `toString()`. The domain model uses `UUID` directly — no wrapper types.
+
+Id-format rules: the WorkTask `id` SHOULD be **UUIDv7** (time-ordered);
+`correlationId` MAY be **UUIDv4/v5/v7**; `subjectId` and `assigneeId` are UUIDs;
+the `ce_id` this service emits is **UUIDv4** (an inbound command's `ce_id` may be
+any version); a `Source` URN's optional trailing instance id is a UUID or a
+positive integer.
 
 ## Developer guide
 

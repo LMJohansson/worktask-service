@@ -23,10 +23,10 @@ public class EventAvroMapper {
     public record OutboundEvent(SpecificRecord avro, Headers headers) {}
 
     public OutboundEvent toAvro(WorkTaskEvent event, Subject subject,
-                                String traceparent, String tracestate, String causationId, String source) {
+                                String traceparent, String tracestate, String causationId) {
         SpecificRecord avro = toAvroRecord(event);
         Headers headers = CloudEventHeaders.forEvent(event, subject, avro,
-                schemaRegistryUrl, traceparent, tracestate, causationId, source);
+                schemaRegistryUrl, traceparent, tracestate, causationId);
         return new OutboundEvent(avro, headers);
     }
 

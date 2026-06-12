@@ -16,20 +16,20 @@ final class CloudEventHeaders {
     private static final DateTimeFormatter RFC3339 =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC);
 
-    // Default source for events not originating from an inbound command (e.g. missing ce_source):
-    // urn:source:<domain>(.<subdomain>):<bounded-context>.
-    private static final String DEFAULT_SOURCE = "urn:source:work.tasks:worktask";
+    // This service's CloudEvents source: identifies the WorkTask bounded context as the message origin
+    // of emitted records (urn:source:<domain>(.<subdomain>)?:<bounded-context>). NOT propagated from the
+    // inbound command — the originating business source is carried as the WorkTask `source` payload attribute.
+    private static final String SERVICE_SOURCE = "urn:source:work.tasks:worktask";
 
     private CloudEventHeaders() {}
 
     static Headers forEvent(WorkTaskEvent event, Subject subject, SpecificRecord avroRecord,
                             String schemaRegistryUrl, String traceparent, String tracestate,
-                            String causationId, String source) {
+                            String causationId) {
         var headers = new RecordHeaders();
         set(headers, "ce_specversion", "1.0");
         set(headers, "ce_type", ceType(avroRecord));
-        // Propagate the originating command's source; fall back to this service (source is REQUIRED).
-        set(headers, "ce_source", source != null ? source : DEFAULT_SOURCE);
+        set(headers, "ce_source", SERVICE_SOURCE);
         set(headers, "ce_id", UUID.randomUUID().toString());
         set(headers, "ce_time", RFC3339.format(event.occurredAt()));
         set(headers, "ce_subject", subject.toUrn());
