@@ -210,7 +210,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     assignWorkTask:
       name: AssignWorkTask
@@ -234,7 +234,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     beginWorkTask:
       name: BeginWorkTask
@@ -255,7 +255,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     pauseWorkTask:
       name: PauseWorkTask
@@ -276,7 +276,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     resumeWorkTask:
       name: ResumeWorkTask
@@ -297,7 +297,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     completeWorkTask:
       name: CompleteWorkTask
@@ -318,7 +318,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     abortWorkTask:
       name: AbortWorkTask
@@ -340,7 +340,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     cancelWorkTask:
       name: CancelWorkTask
@@ -362,7 +362,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     # ---------------------------------------------------------------------
     # Domain Events
@@ -388,7 +388,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskAssigned:
       name: WorkTaskAssigned
@@ -409,7 +409,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskReassigned:
       name: WorkTaskReassigned
@@ -430,7 +430,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskUnassigned:
       name: WorkTaskUnassigned
@@ -450,7 +450,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskBegun:
       name: WorkTaskBegun
@@ -470,7 +470,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskPaused:
       name: WorkTaskPaused
@@ -490,7 +490,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskResumed:
       name: WorkTaskResumed
@@ -510,7 +510,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskCompleted:
       name: WorkTaskCompleted
@@ -531,7 +531,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskAborted:
       name: WorkTaskAborted
@@ -552,7 +552,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskCancelled:
       name: WorkTaskCancelled
@@ -573,7 +573,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     workTaskCommandRejected:
       name: WorkTaskCommandRejected
@@ -599,7 +599,7 @@ components:
           key:
             type: string
             format: uuid
-            description: subjectId (UUID), string-encoded — command and event topics are partitioned by subject; matches `ce_partitionkey`.
+            description: subjectId (string) — command and event topics are partitioned by subject; matches `ce_partitionkey`.
 
     # ---------------------------------------------------------------------
     # Materialized State
@@ -698,9 +698,11 @@ components:
           type: string
           description: |
             The combined Subject URN
-            `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<uuid>` —
-            the aggregate in another bounded context that the WorkTask acts on, e.g.
-            `urn:subject:billing.invoices:payment:invoice:550e8400-e29b-41d4-a716-446655440000`.
+            `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<subject-id>` —
+            the aggregate in another bounded context that the WorkTask acts on. The trailing
+            subject id is a canonical UUID or a colon-delimited sequence of positive integers, e.g.
+            `urn:subject:billing.invoices:payment:invoice:550e8400-e29b-41d4-a716-446655440000`
+            or `urn:subject:billing.invoices:payment:invoice:42:7`.
         ce_datacontenttype:
           type: string
           const: application/avro
@@ -716,10 +718,9 @@ components:
             use-latest-version. Schemas live in the `worktask` group, not `default`.
         ce_partitionkey:
           type: string
-          format: uuid
           description: |
-            `subjectId` (UUID, string-encoded) — matches the Kafka record key on
-            the command and event topics, which are partitioned by subject so all
+            `subjectId` (string — a UUID or a colon-delimited positive-integer sequence) — matches the
+            Kafka record key on the command and event topics, which are partitioned by subject so all
             activity for a subject is ordered. CloudEvents [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md).
         ce_traceparent:
           type: string

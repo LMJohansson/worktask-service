@@ -66,8 +66,8 @@ Example: `work.tasks.worktask.public.worktask.command`
 
 Every WorkTask has:
 - **`type`** (`WorkTaskType`) — identifies the action to be performed, encoded as a URN: `urn:worktask-type:<domain>(.<subdomain>)?:<bounded-context>:<task-name>` (e.g. `urn:worktask-type:billing.invoices:payment:process-refund`). Immutable after creation.
-- **`subject`** (`Subject`) — the aggregate in another domain/bounded context that the task acts on. Groups a `SubjectType` (`urn:subject-type:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>`, e.g. `urn:subject-type:billing.invoices:payment:invoice`) and a `UUID`. Serialized as a single combined URN `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<uuid>` (via `Subject.toUrn()`/`fromUrn()`); the domain record keeps the `{SubjectType, UUID}` structure. Immutable after creation. The `worktask-type`/`subject-type`/`subject` URNs share a common NSS fragment defined in `domain/model/UrnFormat.java`.
-- **`source`** (`Source`) — the originating system/actor, a durable domain attribute set on `CreateWorkTask` (it is carried in the command, event, and state payloads — distinct from the CloudEvents `ce_source` envelope header). Encoded as a URN: `urn:source:<domain>(.<subdomain>)?:<bounded-context>(:<id>)?`, where the optional trailing `<id>` (a canonical UUID or a non-negative integer) identifies a specific originating instance — e.g. `urn:source:work.tasks:worktask`, `urn:source:billing.invoices:payment:42`. Validated by `domain/model/Source.java` (shares `UrnFormat.DOMAIN_CONTEXT`). Immutable after creation.
+- **`subject`** (`Subject`) — the aggregate in another domain/bounded context that the task acts on. Groups a `SubjectType` (`urn:subject-type:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>`, e.g. `urn:subject-type:billing.invoices:payment:invoice`) and a **subject id** — a `String` that is either a canonical UUID or a colon-delimited sequence of positive integers of arbitrary size/length (e.g. `42`, `42:7`, `42:7:3`). Serialized as a single combined URN `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<subject-id>` (via `Subject.toUrn()`/`fromUrn()`); the domain record keeps the `{SubjectType, String id}` structure. Immutable after creation. The `worktask-type`/`subject-type`/`subject` URNs share a common NSS fragment defined in `domain/model/UrnFormat.java`.
+- **`source`** (`Source`) — the originating system/actor, a durable domain attribute set on `CreateWorkTask` (it is carried in the command, event, and state payloads — distinct from the CloudEvents `ce_source` envelope header). Encoded as a URN: `urn:source:<domain>(.<subdomain>)?:<bounded-context>(:<id>)?`, where the optional trailing `<id>` (a canonical UUID or a positive integer, no leading zeros) identifies a specific originating instance — e.g. `urn:source:work.tasks:worktask`, `urn:source:billing.invoices:payment:42`. Validated by `domain/model/Source.java` (shares `UrnFormat.DOMAIN_CONTEXT`). Immutable after creation.
 - **`priority`** (`int`) — numeric priority ranking, defaults to `0`. Immutable after creation.
 - **`deadline`** (`Instant`, nullable) — optional due-by timestamp. Immutable after creation.
 
@@ -140,20 +140,20 @@ Only unparsable (undeserializable) messages go to the dead-letter topic. Invalid
 
 ### Keys and Identifiers
 
-- **Command and event** topics are keyed by **`subjectId`** (the subject's UUID) — co-locating and ordering all activity for a subject. **Compact/state** records are keyed by **WorkTask id** (one compacted entry per task). `subjectId` is immutable for a task's lifetime, so per-task ordering is preserved while per-subject ordering is gained.
+- **Command and event** topics are keyed by **`subjectId`** (the subject's id string) — co-locating and ordering all activity for a subject. **Compact/state** records are keyed by **WorkTask id** (one compacted entry per task). `subjectId` is immutable for a task's lifetime, so per-task ordering is preserved while per-subject ordering is gained.
 - Commands carry only the WorkTask `id` in their payload (not the subject); producers route a command by setting its Kafka record key to the task's `subjectId` (learned from the `WorkTaskCreated` event / read model). `CreateWorkTask` carries the full subject.
-- Kafka record keys are serialized as `String` (UUID `toString()`)
-- Domain model uses `UUID` directly — no wrapper types
+- Kafka record keys are plain `String`s — the `subjectId` (a UUID or a colon-delimited positive-integer sequence) on the command/event topics; the WorkTask `id` (UUID `toString()`) on the compact topic
+- Domain model uses `UUID` directly — no wrapper types (the subject id is the one exception: a `String`)
 
 Identifier formats:
 
-| Identifier              | Rule                                                                                  |
-|-------------------------|---------------------------------------------------------------------------------------|
-| `id` (WorkTaskId)       | SHOULD be **UUIDv7** (time-ordered, sortable)                                          |
-| `correlationId`         | MAY be **UUIDv4, v5, or v7**                                                           |
-| `subjectId`             | a **UUID** (any version) — the numeric form is not (yet) supported by this service     |
-| `assigneeId`            | a UUID (any version)                                                                   |
-| `ce_id` (CloudEvents)   | this service **emits UUIDv4**; an inbound command's `ce_id` MAY be any UUID version    |
+| Identifier              | Rule                                                                                                                 |
+|-------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `id` (WorkTaskId)       | SHOULD be **UUIDv7** (time-ordered, sortable)                                                                        |
+| `correlationId`         | MAY be **UUID (any version)**                                                                                        |
+| `subjectId`             | a `String`: a canonical **UUID** (any version) or a colon-delimited sequence of positive integers (e.g. `42:7`)       |
+| `assigneeId`            | MAY be **UUID (any version)**                                                                                        |
+| `ce_id` (CloudEvents)   | this service **emits UUIDv4**; an inbound command's `ce_id` MAY be **UUID (any version)**                            |
 | Source instance id      | the optional trailing id in `urn:source:…:<id>` is a **UUID (any version) or a positive integer (arbitrary length)** |
 
 ### CloudEvents and Observability
@@ -170,7 +170,7 @@ All Kafka records (event topic + compact topic) use the **Kafka Protocol Binding
 | `ce_subject`         | the combined Subject URN — e.g. `urn:subject:billing.invoices:payment:invoice:550e8400-…`                                                                                          |
 | `ce_datacontenttype` | `application/avro`                                                                                                                                                                |
 | `ce_dataschema`      | `{SCHEMA_REGISTRY_URL}/apis/registry/v3/groups/worktask/artifacts/{avro.schema.fullName}`                                                                                          |
-| `ce_partitionkey`    | `subjectId` (UUID string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the event Kafka record key (events are partitioned by subject) |
+| `ce_partitionkey`    | `subjectId` (string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the event Kafka record key (events are partitioned by subject) |
 | `ce_correlationid`   | the WorkTask `correlationId` (UUID string) — [Correlation extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/correlation.md); groups the business transaction |
 | `ce_causationid`     | the inbound command's `ce_id` — Correlation extension; the id of the command that directly caused this event (omitted if the inbound `ce_id` is absent)                            |
 | `ce_traceparent`     | W3C Trace Context — [Distributed Tracing extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/distributed-tracing.md); propagated from inbound command |

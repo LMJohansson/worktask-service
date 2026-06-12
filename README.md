@@ -46,9 +46,10 @@ Every `WorkTask` has:
   `urn:worktask-type:<domain>(.<subdomain>)?:<bounded-context>:<task-name>`
   (e.g. `urn:worktask-type:billing.invoices:payment:process-refund`). Immutable.
 - **`subject`** (`Subject`) — the aggregate in another bounded context that the
-  task acts on: a `SubjectType` (`urn:subject-type:…:<aggregate>`) plus a `UUID`,
-  serialized as the combined URN
-  `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<uuid>`. Immutable.
+  task acts on: a `SubjectType` (`urn:subject-type:…:<aggregate>`) plus a subject id
+  (a `String`: a canonical UUID, or a colon-delimited sequence of positive integers,
+  e.g. `42:7`), serialized as the combined URN
+  `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<subject-id>`. Immutable.
 - **`source`** (`Source`) — the originating system/actor, a URN
   `urn:source:<domain>(.<subdomain>)?:<bounded-context>(:<id>)?` (optional trailing
   instance id — a UUID or a positive integer). The durable business origin, distinct
@@ -250,11 +251,15 @@ topics are keyed by `subjectId`** (so all activity for a subject is co-located
 and ordered), while the **compact/state** records are keyed by the WorkTask `id`
 (one compacted entry per task). Commands carry only the WorkTask `id` in their
 payload; producers route them by setting the record key to the task's `subjectId`
-(learned from the `WorkTaskCreated` event / read model). Keys are serialized as
-`String` via `toString()`. The domain model uses `UUID` directly — no wrapper types.
+(learned from the `WorkTaskCreated` event / read model). Kafka record keys are
+plain strings — the `subjectId` (a UUID or a colon-delimited positive-integer
+sequence) on the command/event topics, the WorkTask `id` (a UUID) on the compact
+topic. The domain model uses `UUID` directly — no wrapper types (the subject id is
+the one exception: a `String`).
 
 Id-format rules: the WorkTask `id` SHOULD be **UUIDv7** (time-ordered);
-`correlationId` MAY be **UUIDv4/v5/v7**; `subjectId` and `assigneeId` are UUIDs;
+`correlationId` MAY be **UUIDv4/v5/v7**; `assigneeId` is a UUID; `subjectId` is a
+string (a UUID or a colon-delimited positive-integer sequence);
 the `ce_id` this service emits is **UUIDv4** (an inbound command's `ce_id` may be
 any version); a `Source` URN's optional trailing instance id is a UUID or a
 positive integer.

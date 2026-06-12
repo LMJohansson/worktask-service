@@ -63,7 +63,7 @@ class WorkTaskTopologyDedupIT {
 
     @Test
     void enforcesOneActiveTaskOfATypePerSubject() throws Exception {
-        UUID subjectId = UUID.randomUUID();
+        String subjectId = UUID.randomUUID().toString();
         String subjectUrn = new Subject(SUBJECT_TYPE, subjectId).toUrn();
 
         try (var producer = newProducer()) {
@@ -105,9 +105,9 @@ class WorkTaskTopologyDedupIT {
         return new KafkaProducer<>(props);
     }
 
-    private void send(KafkaProducer<String, SpecificRecord> producer, UUID subjectId, SpecificRecord cmd)
+    private void send(KafkaProducer<String, SpecificRecord> producer, String subjectId, SpecificRecord cmd)
             throws Exception {
-        producer.send(new ProducerRecord<>(topics.commandTopic(), subjectId.toString(), cmd)).get();
+        producer.send(new ProducerRecord<>(topics.commandTopic(), subjectId, cmd)).get();
     }
 
     private static CreateWorkTask create(UUID id, String subjectUrn, String type) {
@@ -134,12 +134,12 @@ class WorkTaskTopologyDedupIT {
 
     // --- read-model polling ----------------------------------------------------
 
-    private long countForSubject(UUID subjectId) {
+    private long countForSubject(String subjectId) {
         return QuarkusTransaction.requiringNew().call(() ->
                 repository.findAll(new WorkTaskFilter(null, null, null, subjectId, null), 0, 100).totalCount());
     }
 
-    private void awaitCount(UUID subjectId, long expected) throws InterruptedException {
+    private void awaitCount(String subjectId, long expected) throws InterruptedException {
         long deadline = System.nanoTime() + TIMEOUT.toNanos();
         long last = -1;
         while (System.nanoTime() < deadline) {

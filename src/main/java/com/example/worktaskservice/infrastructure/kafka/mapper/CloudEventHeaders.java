@@ -38,7 +38,7 @@ final class CloudEventHeaders {
                 + "/apis/registry/v3/groups/worktask/artifacts/"
                 + avroRecord.getSchema().getFullName());
         // Events are partitioned by subject; ce_partitionkey matches the Kafka record key (subjectId).
-        set(headers, "ce_partitionkey", subject.id().toString());
+        set(headers, "ce_partitionkey", subject.id());
         // CloudEvents Correlation extension: correlationid groups the business transaction,
         // causationid is the ce_id of the command that directly caused this event.
         set(headers, "ce_correlationid", event.correlationId().toString());

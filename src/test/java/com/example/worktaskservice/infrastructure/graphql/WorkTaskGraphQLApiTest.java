@@ -34,7 +34,7 @@ class WorkTaskGraphQLApiTest {
 
     private WorkTask newTask(String title, WorkTaskStatus status, UUID assigneeId, int priority) {
         var now = Instant.now();
-        return WorkTask.reconstitute(UUID.randomUUID(), TYPE, new Subject(SUBJECT_TYPE, UUID.randomUUID()), SOURCE,
+        return WorkTask.reconstitute(UUID.randomUUID(), TYPE, new Subject(SUBJECT_TYPE, UUID.randomUUID().toString()), SOURCE,
                 title, null, priority, null, status, assigneeId, now, now);
     }
 

@@ -8,6 +8,6 @@ public record WorkTaskFilterInput(
         WorkTaskStatus status,
         String type,
         String subjectType,
-        UUID subjectId,
+        String subjectId,
         UUID assigneeId) {
 }

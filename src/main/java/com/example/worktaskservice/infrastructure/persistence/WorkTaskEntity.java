@@ -21,8 +21,8 @@ public class WorkTaskEntity extends PanacheEntityBase {
     @Column(name = "subject_type", nullable = false)
     public String subjectType;
 
-    @Column(name = "subject_id", nullable = false, columnDefinition = "uuid")
-    public UUID subjectId;
+    @Column(name = "subject_id", nullable = false)
+    public String subjectId;
 
     @Column(nullable = false)
     public String source;

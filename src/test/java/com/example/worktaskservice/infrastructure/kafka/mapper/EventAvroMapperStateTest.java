@@ -14,7 +14,7 @@ class EventAvroMapperStateTest {
 
     @Test
     void roundTripsStateThroughAvro() {
-        var subject = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID());
+        var subject = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID().toString());
         var now = Instant.now();
         var deadline = now.plusSeconds(3600);
         var original = WorkTask.reconstitute(UUID.randomUUID(),
@@ -41,7 +41,7 @@ class EventAvroMapperStateTest {
 
     @Test
     void roundTripsNullableFieldsAsNull() {
-        var subject = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID());
+        var subject = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID().toString());
         var now = Instant.now();
         var original = WorkTask.reconstitute(UUID.randomUUID(),
                 new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund"), subject,

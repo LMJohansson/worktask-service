@@ -218,7 +218,7 @@ public class WorkTaskTopologyProducer {
             return eventMapper.toDomain(state);
         }
 
-        private static String indexKey(UUID subjectId, WorkTaskType type) {
+        private static String indexKey(String subjectId, WorkTaskType type) {
             return subjectId + "|" + type.value();
         }
     }

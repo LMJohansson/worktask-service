@@ -34,8 +34,11 @@ class SourceTest {
         assertThrows(IllegalArgumentException.class, () -> new Source("urn:subject:work.tasks:worktask"));
         // slash form
         assertThrows(IllegalArgumentException.class, () -> new Source("urn:source:work.tasks/worktask"));
-        // trailing id is neither a UUID nor a non-negative integer
+        // trailing id is neither a UUID nor a positive integer
         assertThrows(IllegalArgumentException.class, () -> new Source("urn:source:work.tasks:worktask:abc"));
         assertThrows(IllegalArgumentException.class, () -> new Source("urn:source:work.tasks:worktask:-1"));
+        // strict-positive: no zero, no leading zeros
+        assertThrows(IllegalArgumentException.class, () -> new Source("urn:source:work.tasks:worktask:0"));
+        assertThrows(IllegalArgumentException.class, () -> new Source("urn:source:work.tasks:worktask:007"));
     }
 }

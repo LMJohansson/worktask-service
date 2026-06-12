@@ -10,7 +10,7 @@ public record WorkTaskFilter(
         WorkTaskStatus status,
         WorkTaskType type,
         SubjectType subjectType,
-        UUID subjectId,
+        String subjectId,
         UUID assigneeId) {
 
     public static final WorkTaskFilter EMPTY = new WorkTaskFilter(null, null, null, null, null);
