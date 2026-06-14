@@ -87,6 +87,15 @@ command emits one of three distinct domain events depending on context:
 
 ### Kafka Streams topology
 
+![WorkTask Service — Kafka Streams topology](docs/architecture/worktask-streams-topology-kstd.png)
+
+> Styled per the [Kafka Streams Topology Design (KSTD)](https://kstd.thriving.dev/) standard.
+> Editable source: [`docs/architecture/worktask-streams-topology-kstd.excalidraw`](docs/architecture/worktask-streams-topology-kstd.excalidraw)
+> (regenerate the `.excalidraw` + `.svg`/`.png` with `docs/architecture/generate-kstd-topology.mjs` and `export-excalidraw.mjs`).
+
+<details>
+<summary>Mermaid source (text-based)</summary>
+
 ```mermaid
 %%{
   init: {
@@ -122,8 +131,10 @@ flowchart TD
         dbSink --> pg[("PostgreSQL<br/>read model")]
     end
 
-    pg --> gql["GraphQL API<br/>/graphql"]
+    gql["GraphQL API<br/>/graphql"] -. "read-only query" .-> pg
 ```
+
+</details>
 
 The `event-sink` and `compact-sink` writes for a successful command happen in a
 single `exactly_once_v2` transaction.
