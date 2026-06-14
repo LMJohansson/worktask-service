@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-Implementation in progress. Gradle build files and source code are being scaffolded.
+Implementation in progress — the core domain model, state machine, Kafka Streams topology, persistence, and CloudEvents binding are scaffolded and tested; build and `quarkusDev` run cleanly with all Dev Services healthy.
 
 ## Runtime
 
@@ -68,6 +68,7 @@ Every WorkTask has:
 - **`type`** (`WorkTaskType`) — identifies the action to be performed, encoded as a URN: `urn:worktask-type:<domain>(.<subdomain>)?:<bounded-context>:<task-name>` (e.g. `urn:worktask-type:billing.invoices:payment:process-refund`). Immutable after creation.
 - **`subject`** (`Subject`) — the aggregate in another domain/bounded context that the task acts on. Groups a `SubjectType` (`urn:subject-type:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>`, e.g. `urn:subject-type:billing.invoices:payment:invoice`) and a **subject id** — a `String` that is either a canonical UUID or a colon-delimited sequence of positive integers of arbitrary size/length (e.g. `42`, `42:7`, `42:7:3`). Serialized as a single combined URN `urn:subject:<domain>(.<subdomain>)?:<bounded-context>:<aggregate>:<subject-id>` (via `Subject.toUrn()`/`fromUrn()`); the domain record keeps the `{SubjectType, String id}` structure. Immutable after creation. The `worktask-type`/`subject-type`/`subject` URNs share a common NSS fragment defined in `domain/model/UrnFormat.java`.
 - **`source`** (`Source`) — the originating system/actor, a durable domain attribute set on `CreateWorkTask` (it is carried in the command, event, and state payloads — distinct from the CloudEvents `ce_source` envelope header). Encoded as a URN: `urn:source:<domain>(.<subdomain>)?:<bounded-context>(:<id>)?`, where the optional trailing `<id>` (a canonical UUID or a positive integer, no leading zeros) identifies a specific originating instance — e.g. `urn:source:work.tasks:worktask`, `urn:source:billing.invoices:payment:42`. Validated by `domain/model/Source.java` (shares `UrnFormat.DOMAIN_CONTEXT`). Immutable after creation.
+- **`title`** / **`description`** (`String`) — descriptive text; `description` is optional. Set on `CreateWorkTask`, immutable after creation.
 - **`priority`** (`int`) — numeric priority ranking, defaults to `0`. Immutable after creation.
 - **`deadline`** (`Instant`, nullable) — optional due-by timestamp. Immutable after creation.
 

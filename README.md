@@ -178,7 +178,11 @@ All Kafka records on the `event` and `compact` topics use the **CloudEvents
 Avro bytes, and every CloudEvents attribute is carried as a `ce_`-prefixed
 Kafka header (`ce_specversion`, `ce_type`, `ce_source`, `ce_id`, `ce_time`,
 `ce_subject`, `ce_datacontenttype`, `ce_dataschema`, `ce_partitionkey`,
-`ce_traceparent`, `ce_tracestate`). Inbound command records carry the same
+`ce_correlationid`, `ce_causationid`, `ce_traceparent`, `ce_tracestate`).
+The CloudEvents Correlation extension is carried via `ce_correlationid` (the
+WorkTask `correlationId`, grouping the business transaction) and
+`ce_causationid` (the inbound command's `ce_id` — the command that directly
+caused the event; omitted if absent). Inbound command records carry the same
 header set; trace context is extracted and propagated end-to-end. See the
 [AsyncAPI spec](src/main/resources/asyncapi.yaml) for the full per-message
 contract, including concrete `ce_type` values.
@@ -258,7 +262,7 @@ topic. The domain model uses `UUID` directly — no wrapper types (the subject i
 the one exception: a `String`).
 
 Id-format rules: the WorkTask `id` SHOULD be **UUIDv7** (time-ordered);
-`correlationId` MAY be **UUIDv4/v5/v7**; `assigneeId` is a UUID; `subjectId` is a
+`correlationId` MAY be a UUID of **any version**; `assigneeId` is a UUID; `subjectId` is a
 string (a UUID or a colon-delimited positive-integer sequence);
 the `ce_id` this service emits is **UUIDv4** (an inbound command's `ce_id` may be
 any version); a `Source` URN's optional trailing instance id is a UUID or a

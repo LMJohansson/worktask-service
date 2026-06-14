@@ -722,6 +722,19 @@ components:
             `subjectId` (string — a UUID or a colon-delimited positive-integer sequence) — matches the
             Kafka record key on the command and event topics, which are partitioned by subject so all
             activity for a subject is ordered. CloudEvents [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md).
+        ce_correlationid:
+          type: string
+          format: uuid
+          description: |
+            The WorkTask `correlationId` (UUID string) — groups the business
+            transaction. CloudEvents [Correlation extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/correlation.md).
+        ce_causationid:
+          type: string
+          format: uuid
+          description: |
+            The inbound command's `ce_id` — the id of the command that directly
+            caused this event (omitted if the inbound `ce_id` is absent).
+            CloudEvents [Correlation extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/correlation.md).
         ce_traceparent:
           type: string
           description: |
