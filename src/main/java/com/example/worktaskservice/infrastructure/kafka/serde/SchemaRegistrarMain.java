@@ -3,7 +3,7 @@ package com.example.worktaskservice.infrastructure.kafka.serde;
 /**
  * CI/prod entry point for schema registration, invoked by the Gradle {@code registerSchemas} task.
  * Registers member + union-of-references schemas against the registry given by
- * {@code -Dapicurio.registry.url=…} (or {@code SCHEMA_REGISTRY_URL}). Topic names default to the
+ * {@code -Dschema.registry.url=…} (or {@code SCHEMA_REGISTRY_URL}). Topic names default to the
  * {@code application.properties} values and can be overridden with {@code -Dworktask.topics.*}.
  */
 public final class SchemaRegistrarMain {
@@ -11,7 +11,7 @@ public final class SchemaRegistrarMain {
     private SchemaRegistrarMain() {}
 
     public static void main(String[] args) {
-        String url = prop("apicurio.registry.url",
+        String url = prop("schema.registry.url",
                 System.getenv().getOrDefault("SCHEMA_REGISTRY_URL", "http://localhost:8081"));
         String command    = prop("worktask.topics.command",     "work.tasks.worktask.public.worktask.command");
         String event      = prop("worktask.topics.event",       "work.tasks.worktask.public.worktask.event");

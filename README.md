@@ -17,7 +17,7 @@ specification — see [`src/main/resources/asyncapi.yaml`](src/main/resources/as
 - **Java 25** (openjdk-25)
 - **Quarkus 3.36.1** (Gradle Kotlin DSL)
 - **Kafka Streams** (low-level `Topology` API, `exactly_once_v2`)
-- **Avro** schemas + **Apicurio Schema Registry**
+- **Avro** schemas + **Confluent Schema Registry**
 - **PostgreSQL** (read-model persistence via Hibernate ORM with Panache)
 - **CloudEvents 1.0** (Kafka Protocol Binding, binary content mode)
 - **OpenTelemetry**
@@ -235,8 +235,9 @@ Type conventions:
 
 ### Schema Registry
 
-Schemas are registered with an Apicurio Schema Registry. Compatibility mode
-differs by message direction:
+Schemas are registered with a **Confluent Schema Registry** (its REST API).
+Compatibility mode differs by message direction and is set per subject by the
+registrar:
 
 - **Commands** (consumed by this service): `BACKWARD` — the service must keep
   reading commands written against older schema versions as producers
@@ -248,16 +249,19 @@ differs by message direction:
 Because each topic carries multiple message types, every topic's value subject
 (`<topic>-value`) is an **Avro union of schema references** under
 TopicNameStrategy (Confluent's recommended multi-type-topic pattern): each
-message type is registered as its own artifact and referenced from the union.
-The SerDes use `find-latest` + `auto-register=false` (and a custom datum
-provider that reads a union into its concrete branch); the internal Streams
-state store uses a registry-free serde. Schemas live in the `worktask` group and
-are registered out-of-band — on startup in dev/test, and via
-`./gradlew registerSchemas -Dapicurio.registry.url=<url>` for CI/prod. The
-Quarkus Apicurio Dev Service doesn't start for a Kafka-Streams app, so dev mode
-runs Apicurio through **Dev Services for Compose** (`compose-devservices.yml`,
-`localhost:8081`) and tests run it through Testcontainers
-(`ApicurioRegistryTestResource`).
+message type is registered under its own subject (subject = Avro full name) and
+referenced from the union by `{name, subject, version}`. The SerDes use
+`use.latest.version` + `auto.register.schemas=false` (and a custom deserializer
+that reads a union into its concrete branch); the internal Streams state store
+uses a registry-free serde. Schemas are registered out-of-band — on startup in
+dev/test, and via `./gradlew registerSchemas -Dschema.registry.url=<url>` for
+CI/prod. Quarkus Kafka Dev Services manages the broker but doesn't surface a
+registry for a Kafka-Streams app, so dev mode runs **Apicurio's Confluent-compatible
+`ccompat` API** (`/apis/ccompat/v7`) through **Dev Services for Compose**
+(`compose-devservices.yml`, `localhost:8081`) and tests run it through
+Testcontainers (`ApicurioRegistryTestResource`). Apicurio rather than Redpanda
+because a Redpanda container in the compose project would be misdetected as the
+Kafka broker. Prod uses real `cp-schema-registry`.
 
 ### Identifiers
 
@@ -284,9 +288,9 @@ positive integer.
 ### Prerequisites
 
 - Java 25 (openjdk-25)
-- Docker (for Dev Services — Kafka, PostgreSQL, and an Apicurio Schema
-  Registry are auto-provisioned in dev/test mode; no manual Docker Compose
-  setup required)
+- Docker (for Dev Services — Kafka, PostgreSQL, and an Apicurio registry serving
+  the Confluent-compatible ccompat API are auto-provisioned in dev/test mode; no
+  manual Docker Compose setup required)
 
 ### Build & run
 
@@ -314,7 +318,7 @@ positive integer.
 ```
 
 In dev mode, Quarkus Dev Services automatically provisions Kafka, PostgreSQL,
-and an Apicurio Schema Registry, and creates the four topics listed above.
+and an Apicurio registry (Confluent-compatible ccompat API), and creates the four topics listed above.
 Note that changes to Dev Services topic/partition configuration in
 `application.properties` require a full restart of `quarkusDev` (not just
 live reload), since that configuration is build-time.
@@ -370,21 +374,21 @@ skaffold dev --port-forward
 
 This builds the app image against Minikube's own Docker daemon (no registry
 push needed), deploys the generated app manifest plus the Strimzi `Kafka`/
-`KafkaTopic` custom resources (`k8s/strimzi/`) and the Apicurio Schema Registry
-3.x manifest (`k8s/apicurio/apicurio-registry.yaml` — see its header comment for
-why a hand-written manifest is used instead of the community Helm chart), and
-installs PostgreSQL via the Bitnami Helm chart (`k8s/postgresql/`).
+`KafkaTopic` custom resources (`k8s/strimzi/`) and the Confluent Schema Registry
+manifest (`k8s/confluent/schema-registry.yaml` — `cp-schema-registry` backed by
+the Strimzi Kafka broker; see its header comment), and installs PostgreSQL via
+the Bitnami Helm chart (`k8s/postgresql/`).
 `--port-forward` exposes the app locally; the `portForward` stanza in
 `skaffold.yaml` pins it to `http://localhost:8080` (the generated Service uses
 port 80, so without the pin Skaffold would assign a random local port). The
-dependency Services (Kafka, PostgreSQL, Apicurio) are also forwarded, on
+dependency Services (Kafka, PostgreSQL, Schema Registry) are also forwarded, on
 auto-assigned local ports printed in Skaffold's output. `skaffold dev` rebuilds
 and redeploys on source changes and streams pod logs.
 
 On a fresh cluster the first `skaffold dev` takes a few minutes: the app's
 `wait-for-deps` init container (configured via `quarkus.kubernetes.init-containers`
-in `application.properties`) holds startup until Kafka, PostgreSQL, and Apicurio
-accept connections, since Kafka Streams and Hibernate both connect eagerly at boot.
+in `application.properties`) holds startup until Kafka, PostgreSQL, and the Schema
+Registry accept connections, since Kafka Streams and Hibernate both connect eagerly at boot.
 
 The app runs with `QUARKUS_PROFILE=minikube` (set as a Deployment env var by
 `quarkus.kubernetes.env.vars.quarkus-profile`), which disables Dev Services

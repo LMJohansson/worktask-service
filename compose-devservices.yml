@@ -1,8 +1,14 @@
 # Quarkus Dev Services for Compose starts this automatically in dev mode (`./gradlew quarkusDev`).
-# The built-in Quarkus Apicurio Dev Service does NOT start for a Kafka-Streams app (it only triggers
-# for SmallRye messaging channels), so the registry is provided here instead. Host port 8081 matches
-# the default `SCHEMA_REGISTRY_URL=http://localhost:8081`, so no extra config is needed; the app's
-# SchemaRegistrarStartup waits for readiness and registers the union schemas on boot.
+# Quarkus Kafka Dev Services manages the Kafka broker (and pre-creates the topics), but does NOT surface
+# a schema registry, and the built-in Schema Registry Dev Service only triggers for SmallRye messaging
+# channels (not a Kafka-Streams app) — so a Confluent-API-compatible registry is provided here.
+#
+# Apicurio is used (not Redpanda) because Quarkus Kafka Dev Services would otherwise detect a Redpanda
+# container in this compose project and try to adopt IT as the Kafka broker (failing on the missing 9092
+# port). Apicurio is self-contained and serves the **Confluent Schema Registry REST API** under
+# `/apis/ccompat/v7` — which is what the app's `schema.registry.url` points at (host port 8081, so the
+# default `SCHEMA_REGISTRY_URL=http://localhost:8081/apis/ccompat/v7`). The app's SchemaRegistrarStartup
+# waits for readiness and registers the union schemas on boot. Prod uses real cp-schema-registry instead.
 #
 # Disabled under the test profile (%test.quarkus.compose.devservices.enabled=false) — tests provide
 # the registry via the Testcontainers ApicurioRegistryTestResource instead.

@@ -27,10 +27,12 @@ servers:
     host: localhost:9092
     protocol: kafka
     description: |
-      Local development broker, auto-provisioned by Quarkus Dev Services
-      (along with PostgreSQL and an Apicurio Schema Registry instance) when
-      running `./gradlew quarkusDev` or the test suite — no manual Docker
-      Compose setup required.
+      Local development broker. Under `./gradlew quarkusDev` or the test suite the broker
+      (with PostgreSQL and an Apicurio registry serving the Confluent-compatible ccompat API) is
+      auto-provisioned by Quarkus Dev Services on a **dynamically assigned** host port — the
+      `localhost:9092` shown here is nominal. Under `skaffold dev` this address is real: `skaffold.yaml`
+      pins the in-cluster Strimzi bootstrap port-forward to local 9092 (and the Schema Registry to
+      local 8081). No manual Docker Compose setup required.
 
 channels:
   workTaskCommand:
@@ -711,11 +713,11 @@ components:
           type: string
           format: uri
           description: |
-            URI of the Avro schema in the Apicurio Schema Registry:
-            `{SCHEMA_REGISTRY_URL}/apis/registry/v3/groups/worktask/artifacts/{avro.schema.fullName}`
-            (the per-type member artifact). Each topic's value subject `<topic>-value` is an Avro union of
+            URI of the Avro schema in the Confluent Schema Registry:
+            `{SCHEMA_REGISTRY_URL}/subjects/{avro.schema.fullName}/versions/latest`
+            (the per-type member subject). Each topic's value subject `<topic>-value` is an Avro union of
             references to these member schemas (TopicNameStrategy); producers resolve it with
-            use-latest-version. Schemas live in the `worktask` group, not `default`.
+            use-latest-version.
         ce_partitionkey:
           type: string
           description: |

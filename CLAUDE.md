@@ -170,7 +170,7 @@ All Kafka records (event topic + compact topic) use the **Kafka Protocol Binding
 | `ce_time`            | RFC 3339 timestamp                                                                                                                                                                |
 | `ce_subject`         | the combined Subject URN — e.g. `urn:subject:billing.invoices:payment:invoice:550e8400-…`                                                                                          |
 | `ce_datacontenttype` | `application/avro`                                                                                                                                                                |
-| `ce_dataschema`      | `{SCHEMA_REGISTRY_URL}/apis/registry/v3/groups/worktask/artifacts/{avro.schema.fullName}`                                                                                          |
+| `ce_dataschema`      | `{SCHEMA_REGISTRY_URL}/subjects/{avro.schema.fullName}/versions/latest`                                                                                                              |
 | `ce_partitionkey`    | `subjectId` (string) — [Partitioning extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/partitioning.md); matches the event Kafka record key (events are partitioned by subject) |
 | `ce_correlationid`   | the WorkTask `correlationId` (UUID string) — [Correlation extension](https://github.com/cloudevents/spec/blob/main/cloudevents/extensions/correlation.md); groups the business transaction |
 | `ce_causationid`     | the inbound command's `ce_id` — Correlation extension; the id of the command that directly caused this event (omitted if the inbound `ce_id` is absent)                            |
@@ -226,7 +226,9 @@ All event schemas share base fields: `id` (UUID), `correlationId` (UUID), `occur
 
 Namespace convention: `com.example.worktaskservice.<commands|events|state>`
 
-Use Schema Registry (Apicurio). Compatibility mode differs by message direction:
+Use a **Confluent Schema Registry** (its REST API; Apicurio's Confluent-compatible `ccompat` endpoint in
+dev/test, real `cp-schema-registry` in prod). Compatibility mode differs by message direction and is set
+per subject by the registrar:
 - **Commands** (inbound, consumed by this service): `BACKWARD` — this service must keep reading commands written against older schema versions as producers upgrade independently.
 - **Events and state** (outbound, produced by this service): `FORWARD` — downstream consumers must keep reading new schema versions with their older schema, since they may upgrade later than this service does.
 
@@ -234,28 +236,33 @@ Use Schema Registry (Apicurio). Compatibility mode differs by message direction:
 
 The `command` (8 types) and `event` (11 types) topics are heterogeneous. Following the Confluent
 ["multiple event types in one topic"](https://www.confluent.io/blog/multiple-event-types-in-the-same-kafka-topic/#summary)
-pattern under TopicNameStrategy (Apicurio `TopicIdStrategy`), each multi-type topic's value schema is an
-**Avro union of schema references**: every message type is registered as its own artifact, and a union
-artifact at `<topic>-value` references them. This keeps one subject per topic with per-type compatibility.
+pattern under `TopicNameStrategy`, each multi-type topic's value schema is an
+**Avro union of schema references**: every message type is registered under its own subject (subject = Avro
+full name), and a union schema at `<topic>-value` references them. This keeps one subject per topic with
+per-type compatibility.
 
-`<topic>-value` artifacts (group **`worktask`**, not `default` — Apicurio normalises the `default` group to
-a null reference groupId that the serde's reference resolver can't look up):
+`<topic>-value` subjects (Confluent has no groups; member schemas live under their full-name subjects, and
+the union references each by `{name, subject, version}`):
 - `…command-value` and `…dead-letter-value` → union of the 8 command types
 - `…event-value` → union of the 11 event types
 - `…compact-value` → the single `state.WorkTask` schema (single-type, no union)
 
-**SerDes** (`AvroSerdeFactory`): default `TopicIdStrategy`, `artifact.group-id=worktask`, `find-latest=true`
-(the serializer writes against the latest `<topic>-value` union; the deserializer resolves the branch via
-the message's globalId), `auto-register=false` (registration is out-of-band), and a custom
-`UnionAwareAvroDatumProvider` — the stock provider can't read a union into its concrete branch
-`SpecificRecord`. The internal Streams state-store changelog must NOT use this registry-backed serde (no
-public `<changelog>-value` union exists); the store uses a fixed-schema, registry-free `LocalAvroSerde`.
+**SerDes** (`AvroSerdeFactory`): Confluent `KafkaAvroSerializer` + a custom `UnionAwareKafkaAvroDeserializer`,
+default `TopicNameStrategy`, `use.latest.version=true` (the serializer writes against the latest
+`<topic>-value` union; the deserializer resolves the writer schema via the id embedded in the message),
+`latest.compatibility.strict=false` (accepts a record whose schema is a *branch* of the latest union),
+`auto.register.schemas=false` (registration is out-of-band). `UnionAwareKafkaAvroDeserializer` reads a union
+writer schema into its concrete branch `SpecificRecord` — the stock deserializer can't (a union has no
+single reader class). The internal Streams state-store changelog must NOT use this registry-backed serde (no
+public `<changelog>-value` subject exists); the store uses a fixed-schema, registry-free `LocalAvroSerde`.
 
-**Registration** (`SchemaRegistrar`, Apicurio v3 REST API, idempotent): in dev/test by `SchemaRegistrarStartup`
-(`@UnlessBuildProfile("prod")`) against the registry; in CI/prod by the Gradle `registerSchemas` task
-(`SchemaRegistrarMain`). Tests provide the registry via a Testcontainers `QuarkusTestResource`
-(`ApicurioRegistryTestResource`) — the Quarkus Apicurio Dev Service only auto-starts for messaging-channel
-apps, not Kafka Streams. `WorkTaskTopologyDedupIT` exercises the whole path end-to-end.
+**Registration** (`SchemaRegistrar`, Confluent `/subjects` REST API, idempotent): registers each member
+schema, then the per-topic union, then sets per-subject compatibility (BACKWARD commands / FORWARD
+events+state). In dev/test by `SchemaRegistrarStartup` (`@UnlessBuildProfile("prod")`) against the registry;
+in CI/prod by the Gradle `registerSchemas` task (`SchemaRegistrarMain`). Tests provide the registry via a
+Testcontainers `QuarkusTestResource` (`ApicurioRegistryTestResource`, pointed at the ccompat endpoint) —
+the Quarkus Schema Registry Dev Service only auto-starts for messaging-channel apps, not Kafka Streams.
+`WorkTaskTopologyDedupIT` exercises the whole path end-to-end.
 
 ### Package Structure
 
@@ -293,8 +300,8 @@ src/main/java/com/example/worktaskservice/
     │   │   │                                     StateTransitionProcessor + DatabaseSinkProcessor
     │   │   └── WorkTaskCommandDecider.java    ← pure uniqueness-rule + state-machine decision (unit-tested)
     │   ├── serde/
-    │   │   ├── AvroSerdeFactory.java          ← Apicurio union/find-latest serde + registry-free store serde
-    │   │   ├── UnionAwareAvroDatumProvider.java ← reads a union into its concrete branch SpecificRecord
+    │   │   ├── AvroSerdeFactory.java          ← Confluent union/use-latest-version serde + registry-free store serde
+    │   │   ├── UnionAwareKafkaAvroDeserializer.java ← reads a union into its concrete branch SpecificRecord
     │   │   ├── LocalAvroSerde.java            ← registry-free fixed-schema serde (internal state store)
     │   │   └── SchemaRegistrar{,Startup,Main}.java ← register member + union-of-references schemas
     │   └── mapper/
@@ -318,7 +325,8 @@ src/main/java/com/example/worktaskservice/
 ```kotlin
 // build.gradle.kts
 implementation("io.quarkus:quarkus-avro")                        // Avro codegen (native, no plugin needed)
-implementation("io.quarkus:quarkus-apicurio-registry-avro")      // Schema Registry + Avro SerDes
+implementation("io.quarkus:quarkus-confluent-registry-avro")     // Confluent Schema Registry glue (native/registry)
+implementation("io.confluent:kafka-avro-serializer:8.2.1")       // Confluent Avro SerDes (from packages.confluent.io)
 implementation("io.quarkus:quarkus-kafka-streams")
 implementation("io.quarkus:quarkus-hibernate-orm-panache")
 implementation("io.quarkus:quarkus-jdbc-postgresql")
@@ -327,13 +335,20 @@ implementation("io.quarkus:quarkus-smallrye-health")
 implementation("io.quarkus:quarkus-smallrye-graphql")           // GraphQL query API over the read model (/graphql, /q/graphql-ui)
 ```
 
-Quarkus Dev Services auto-provisions Kafka and PostgreSQL in dev and test mode. The Quarkus **Apicurio
-Dev Service does not start** for this Kafka-Streams app (it only triggers for SmallRye messaging-channel
-apps), so Apicurio is provided explicitly:
+Quarkus Dev Services auto-provisions Kafka and PostgreSQL in dev and test mode. Quarkus Kafka Dev Services
+manages the broker (and pre-creates the topics) but does **not** surface a schema registry, and the Quarkus
+**Schema Registry Dev Service does not start** for this Kafka-Streams app (it only triggers for SmallRye
+messaging-channel apps), so a Confluent-API-compatible registry is provided explicitly via **Apicurio's
+`ccompat` endpoint** (`/apis/ccompat/v7` — Apicurio is self-contained and speaks the Confluent REST API
+including the schema references the union pattern needs). Apicurio, not Redpanda: a Redpanda container in
+the compose project would be misdetected by Quarkus Kafka Dev Services as the Kafka broker (it would try to
+adopt it and fail on the missing 9092 port).
 - **Dev mode** (`quarkusDev`): **Dev Services for Compose** starts `compose-devservices.yml` (Apicurio on
-  `localhost:8081`, matching the default `SCHEMA_REGISTRY_URL`).
-- **Tests**: a Testcontainers `QuarkusTestResource` (`ApicurioRegistryTestResource`); the compose stack is
-  disabled under the test profile.
+  `localhost:8081`; the default `SCHEMA_REGISTRY_URL` is `http://localhost:8081/apis/ccompat/v7`).
+- **Tests**: a Testcontainers `QuarkusTestResource` (`ApicurioRegistryTestResource`, a `GenericContainer`
+  injecting the ccompat URL); the compose stack is disabled under the test profile.
+- **Prod/k8s**: real `cp-schema-registry` backed by the Strimzi Kafka broker (`k8s/confluent/`), at the
+  bare base URL (it serves `/subjects` at root, no ccompat prefix).
 
 Schema registration is out-of-band: dev/test register on startup (`SchemaRegistrarStartup`); CI/prod run
-`./gradlew registerSchemas -Dapicurio.registry.url=<base-url>` (the `SchemaRegistrarMain` entry point).
+`./gradlew registerSchemas -Dschema.registry.url=<base-url>` (the `SchemaRegistrarMain` entry point).

@@ -36,9 +36,9 @@ manifests:
     - k8s/namespace.yaml
     - k8s/strimzi/kafka-cluster.yaml
     - k8s/strimzi/kafka-topics.yaml
-    # Apicurio Schema Registry 3.x — a hand-written manifest rather than a Helm
-    # chart; see its header comment for why the community chart doesn't work on 3.x.
-    - k8s/apicurio/apicurio-registry.yaml
+    # Confluent Schema Registry (cp-schema-registry) backed by the Strimzi Kafka
+    # broker; see its header comment for the Kafka-backing-store and probe details.
+    - k8s/confluent/schema-registry.yaml
 
 deploy:
   kubectl: {}
@@ -51,13 +51,29 @@ deploy:
         valuesFiles:
           - k8s/postgresql/values.yaml
 
-# Pin the app to a stable local port. The generated Service exposes port 80, so a bare
-# `--port-forward` would otherwise assign a random local port (and the dependency Services
-# still get auto-assigned ones). This makes http://localhost:8080 deterministic for the
-# /graphql and /q/health smoke tests below.
+# Pin services to stable local ports. The generated Service exposes port 80, so a bare
+# `--port-forward` would otherwise assign random local ports. Pinning makes the addresses
+# deterministic: http://localhost:8080 for the /graphql and /q/health smoke tests below,
+# http://localhost:8081 for the Schema Registry, and localhost:9092 for the Kafka bootstrap.
 portForward:
   - resourceType: service
     resourceName: worktask-service
     namespace: worktask
     port: 80
     localPort: 8080
+  # Schema Registry — pin to localhost:8081, matching the dev default SCHEMA_REGISTRY_URL host:port.
+  # Full REST access from the host (e.g. curl http://localhost:8081/subjects).
+  - resourceType: service
+    resourceName: worktask-schema-registry
+    namespace: worktask
+    port: 8081
+    localPort: 8081
+  # Strimzi Kafka bootstrap — pin to localhost:9092, matching the asyncapi development server.
+  # NOTE: this makes localhost:9092 accept TCP (useful for reachability checks), but a producer/
+  # consumer won't fully work from the host: the Strimzi listener is `type: internal`, so the
+  # bootstrap response advertises in-cluster DNS broker addresses that don't resolve off-cluster.
+  - resourceType: service
+    resourceName: worktask-kafka-kafka-bootstrap
+    namespace: worktask
+    port: 9092
+    localPort: 9092

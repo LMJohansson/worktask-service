@@ -1,0 +1,71 @@
+# Confluent Schema Registry for local Minikube development.
+#
+# Unlike standalone Apicurio, cp-schema-registry stores its schemas in a Kafka topic (_schemas), so it
+# needs a broker: it points at the Strimzi Kafka plain listener. It serves both its REST API and health
+# on a single port (8081) — no separate management port — so the probes hit /subjects directly. It
+# crash-loops until the broker is reachable; the readiness probe handles that retry. The Service
+# name/port match SCHEMA_REGISTRY_URL in application.properties
+# (http://worktask-schema-registry.worktask.svc.cluster.local:8081).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worktask-schema-registry
+  namespace: worktask
+  labels:
+    app: worktask-schema-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worktask-schema-registry
+  template:
+    metadata:
+      labels:
+        app: worktask-schema-registry
+    spec:
+      containers:
+        - name: schema-registry
+          image: confluentinc/cp-schema-registry:8.2.1
+          ports:
+            - name: http
+              containerPort: 8081
+          env:
+            - name: SCHEMA_REGISTRY_HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS
+              value: PLAINTEXT://worktask-kafka-kafka-bootstrap.worktask.svc.cluster.local:9092
+            - name: SCHEMA_REGISTRY_LISTENERS
+              value: http://0.0.0.0:8081
+          livenessProbe:
+            httpGet:
+              path: /subjects
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /subjects
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 100m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worktask-schema-registry
+  namespace: worktask
+  labels:
+    app: worktask-schema-registry
+spec:
+  selector:
+    app: worktask-schema-registry
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http

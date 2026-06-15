@@ -9,7 +9,7 @@ import com.example.worktaskservice.domain.model.WorkTaskStatus;
 import com.example.worktaskservice.infrastructure.config.TopicConfig;
 import com.example.worktaskservice.infrastructure.persistence.PanacheWorkTaskRepository;
 import com.example.worktaskservice.testsupport.ApicurioRegistryTestResource;
-import io.apicurio.registry.serde.avro.AvroKafkaSerializer;
+import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * End-to-end proof of the subject-uniqueness rule through the real Kafka Streams topology: produces
- * Avro command records (resolved against the Apicurio union schemas) keyed by {@code subjectId} and
+ * Avro command records (resolved against the Confluent union schemas) keyed by {@code subjectId} and
  * asserts the materialized read model. Assertions are ordering-based — because same-subject commands
  * share a partition, observing a later command's effect proves the earlier one was processed — so no
  * fragile "wait then check it didn't happen" timing is needed.
@@ -97,11 +97,11 @@ class WorkTaskTopologyDedupIT {
         var props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, AvroKafkaSerializer.class.getName());
-        props.put("apicurio.registry.url", registryUrl);
-        props.put("apicurio.registry.artifact.group-id", "worktask");
-        props.put("apicurio.registry.find-latest", "true");
-        props.put("apicurio.registry.auto-register", "false");
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
+        props.put("schema.registry.url", registryUrl);
+        props.put("auto.register.schemas", "false");
+        props.put("use.latest.version", "true");
+        props.put("latest.compatibility.strict", "false");
         return new KafkaProducer<>(props);
     }
 

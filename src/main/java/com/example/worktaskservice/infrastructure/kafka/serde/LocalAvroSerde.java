@@ -19,8 +19,8 @@ import java.io.UncheckedIOException;
 /**
  * Registry-free Avro Serde for a single, fixed schema — used for the Kafka Streams state store (and its
  * internal changelog). The store is Streams-internal infrastructure and must not depend on the public
- * schema registry: the registry-backed SerDes use {@code find-latest} against a {@code <topic>-value}
- * union artifact that exists only for the public command/event/compact topics, not for changelog topics.
+ * schema registry: the registry-backed SerDes use {@code use.latest.version} against a {@code <topic>-value}
+ * union subject that exists only for the public command/event/compact topics, not for changelog topics.
  * Reader schema == writer schema (the generated {@code SCHEMA$}); an incompatible state-schema change
  * requires a Streams reset, which is the normal lifecycle for internal stores.
  */

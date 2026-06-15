@@ -12,10 +12,10 @@ import org.jboss.logging.Logger;
 import java.time.Duration;
 
 /**
- * Dev/test bootstrap: registers the member + union-of-references schemas against the Apicurio
- * Dev Services registry at startup, so the {@code find-latest} / {@code auto-register=false} SerDes can
- * resolve them. Excluded from the production jar ({@code @UnlessBuildProfile("prod")}) — CI/prod register
- * out-of-band via the Gradle {@code registerSchemas} task ({@link SchemaRegistrarMain}).
+ * Dev/test bootstrap: registers the member + union-of-references schemas against the Redpanda-backed
+ * Schema Registry at startup, so the {@code use.latest.version} / {@code auto.register.schemas=false}
+ * SerDes can resolve them. Excluded from the production jar ({@code @UnlessBuildProfile("prod")}) —
+ * CI/prod register out-of-band via the Gradle {@code registerSchemas} task ({@link SchemaRegistrarMain}).
  */
 @ApplicationScoped
 @UnlessBuildProfile("prod")
@@ -33,7 +33,7 @@ public class SchemaRegistrarStartup {
     void onStart(@Observes StartupEvent event) {
         try {
             var registrar = new SchemaRegistrar(registryUrl);
-            registrar.awaitReady(Duration.ofSeconds(60));   // tolerate a registry still starting under dev-mode compose
+            registrar.awaitReady(Duration.ofSeconds(60));   // tolerate a registry still starting under Dev Services
             registrar.registerAll(
                     topics.commandTopic(), topics.deadLetterTopic(), topics.eventTopic(), topics.compactTopic());
         } catch (Exception e) {
