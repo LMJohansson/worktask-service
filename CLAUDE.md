@@ -71,6 +71,7 @@ Every WorkTask has:
 - **`title`** / **`description`** (`String`) — descriptive text; `description` is optional. Set on `CreateWorkTask`, immutable after creation.
 - **`priority`** (`int`) — numeric priority ranking, defaults to `0`. Immutable after creation.
 - **`deadline`** (`Instant`, nullable) — optional due-by timestamp. Immutable after creation.
+- **`genericInfo`** (`GenericInfo`, nullable) — a self-describing result/info envelope modelled on the CloudEvents `data` section: an opaque `data` (`byte[]`, typically Avro-encoded) plus `name`, `type`, `datacontenttype`, `dataschema` describing it so a recipient can unmarshal it. The whole envelope is optional, **but when present every field is mandatory** (validated in `domain/model/GenericInfo.java`). Unlike the other attributes it is *not* create-only: it is settable on `CreateWorkTask` **and** re-suppliable by the terminating commands (`Complete`/`Abort`/`Cancel`) to send a result back. Merge rule: a command's `genericInfo` is applied only when non-null (null leaves the current value unchanged); the terminating event and the materialized state carry the resulting (post-merge) value.
 
 At most one **active** (non-terminal) WorkTask of a given `type` may exist per `subject` at a time — see WorkTask Lifecycle and the Kafka Streams Topology (`subject-active-index`) below.
 
@@ -197,29 +198,35 @@ Define the `UUID` fixed type inline on first use within each schema file; refere
 ```
 src/main/avro/
   commands/
-    CreateWorkTask.avsc      ← type, subject, source, title, description, priority, deadline
+    CreateWorkTask.avsc      ← type, subject, source, title, description, priority, deadline, genericInfo
     AssignWorkTask.avsc      ← assigneeId (nullable — null means unassign)
     BeginWorkTask.avsc
     PauseWorkTask.avsc
     ResumeWorkTask.avsc
-    CompleteWorkTask.avsc
-    AbortWorkTask.avsc       ← reason (nullable)
-    CancelWorkTask.avsc      ← reason (nullable)
+    CompleteWorkTask.avsc    ← genericInfo (nullable result)
+    AbortWorkTask.avsc       ← reason (nullable), genericInfo (nullable result)
+    CancelWorkTask.avsc      ← reason (nullable), genericInfo (nullable result)
   events/
-    WorkTaskCreated.avsc     ← type, subject, source, title, description, priority, deadline
+    WorkTaskCreated.avsc     ← type, subject, source, title, description, priority, deadline, genericInfo
     WorkTaskAssigned.avsc
     WorkTaskReassigned.avsc
     WorkTaskUnassigned.avsc
     WorkTaskBegun.avsc
     WorkTaskPaused.avsc
     WorkTaskResumed.avsc
-    WorkTaskCompleted.avsc
-    WorkTaskAborted.avsc
-    WorkTaskCancelled.avsc
+    WorkTaskCompleted.avsc   ← genericInfo (nullable result)
+    WorkTaskAborted.avsc     ← genericInfo (nullable result)
+    WorkTaskCancelled.avsc   ← genericInfo (nullable result)
     WorkTaskCommandRejected.avsc  ← rejectionReason, commandType
   state/
-    WorkTask.avsc            ← compact topic payload (full materialized state; includes source)
+    WorkTask.avsc            ← compact topic payload (full materialized state; includes source, genericInfo)
 ```
+
+The `genericInfo` field is a `["null", GenericInfo]` union defaulting to `null` (so it is optional and
+schema-compatible — BACKWARD for commands, FORWARD for events/state). The `GenericInfo` record (fields
+`name`, `type`, `datacontenttype`, `dataschema` as `string`; `data` as `bytes` — all mandatory) is
+defined inline in each schema that carries it, the same per-file convention used for the `UUID` fixed
+type.
 
 All command schemas share base fields: `id` (UUID — the WorkTask id), `correlationId` (UUID).
 All event schemas share base fields: `id` (UUID), `correlationId` (UUID), `occurredAt` (timestamp-nanos).

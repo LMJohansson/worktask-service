@@ -52,6 +52,7 @@ final class WorkTaskCommandDecider {
             WorkTask state = WorkTask.reconstitute(
                     event.id(), event.type(), event.subject(), event.source(),
                     event.title(), event.description(), event.priority(), event.deadline(),
+                    event.genericInfo(),
                     WorkTaskStatus.DRAFT, null, now, now);
             return new Accepted(event, state, IndexUpdate.ADD);
         }

@@ -17,10 +17,12 @@ class EventAvroMapperStateTest {
         var subject = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID().toString());
         var now = Instant.now();
         var deadline = now.plusSeconds(3600);
+        var info = new GenericInfo("refund-result", "urn:worktask-result:refund", "application/avro",
+                "http://registry/subjects/refund/versions/1", new byte[]{10, 20, 30});
         var original = WorkTask.reconstitute(UUID.randomUUID(),
                 new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund"), subject,
                 new Source("urn:source:billing.invoices:payment:7"),
-                "title", "description", 5, deadline,
+                "title", "description", 5, deadline, info,
                 WorkTaskStatus.ASSIGNED, UUID.randomUUID(), now, now);
 
         WorkTask roundTripped = mapper.toDomain(mapper.toStateAvro(original));
@@ -37,6 +39,7 @@ class EventAvroMapperStateTest {
         assertEquals(original.assigneeId(), roundTripped.assigneeId());
         assertEquals(original.createdAt(), roundTripped.createdAt());
         assertEquals(original.updatedAt(), roundTripped.updatedAt());
+        assertEquals(info, roundTripped.genericInfo());
     }
 
     @Test
@@ -46,7 +49,7 @@ class EventAvroMapperStateTest {
         var original = WorkTask.reconstitute(UUID.randomUUID(),
                 new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund"), subject,
                 new Source("urn:source:work.tasks:worktask"),
-                "title", null, 0, null,
+                "title", null, 0, null, null,
                 WorkTaskStatus.DRAFT, null, now, now);
 
         WorkTask roundTripped = mapper.toDomain(mapper.toStateAvro(original));
@@ -54,5 +57,6 @@ class EventAvroMapperStateTest {
         assertNull(roundTripped.description());
         assertNull(roundTripped.deadline());
         assertNull(roundTripped.assigneeId());
+        assertNull(roundTripped.genericInfo());
     }
 }

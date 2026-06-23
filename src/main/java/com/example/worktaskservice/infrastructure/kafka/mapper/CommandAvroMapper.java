@@ -2,12 +2,14 @@ package com.example.worktaskservice.infrastructure.kafka.mapper;
 
 import com.example.worktaskservice.commands.*;
 import com.example.worktaskservice.domain.command.*;
+import com.example.worktaskservice.domain.model.GenericInfo;
 import com.example.worktaskservice.domain.model.Source;
 import com.example.worktaskservice.domain.model.Subject;
 import com.example.worktaskservice.domain.model.WorkTaskType;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.common.header.Headers;
 
+import java.nio.ByteBuffer;
 import java.util.UUID;
 
 public class CommandAvroMapper {
@@ -35,7 +37,8 @@ public class CommandAvroMapper {
                     cmd.getTitle(),
                     cmd.getDescription(),
                     cmd.getPriority(),
-                    cmd.getDeadline());
+                    cmd.getDeadline(),
+                    toGenericInfo(cmd.getGenericInfo()));
             case AssignWorkTask cmd -> new AssignWorkTaskCommand(
                     toUUID(cmd.getId()),
                     toUUID(cmd.getCorrelationId()),
@@ -47,11 +50,13 @@ public class CommandAvroMapper {
             case ResumeWorkTask cmd -> new ResumeWorkTaskCommand(
                     toUUID(cmd.getId()), toUUID(cmd.getCorrelationId()));
             case CompleteWorkTask cmd -> new CompleteWorkTaskCommand(
-                    toUUID(cmd.getId()), toUUID(cmd.getCorrelationId()));
+                    toUUID(cmd.getId()), toUUID(cmd.getCorrelationId()), toGenericInfo(cmd.getGenericInfo()));
             case AbortWorkTask cmd -> new AbortWorkTaskCommand(
-                    toUUID(cmd.getId()), toUUID(cmd.getCorrelationId()), cmd.getReason());
+                    toUUID(cmd.getId()), toUUID(cmd.getCorrelationId()), cmd.getReason(),
+                    toGenericInfo(cmd.getGenericInfo()));
             case CancelWorkTask cmd -> new CancelWorkTaskCommand(
-                    toUUID(cmd.getId()), toUUID(cmd.getCorrelationId()), cmd.getReason());
+                    toUUID(cmd.getId()), toUUID(cmd.getCorrelationId()), cmd.getReason(),
+                    toGenericInfo(cmd.getGenericInfo()));
             default -> throw new IllegalArgumentException("Unknown Avro command: " + avro.getClass().getSimpleName());
         };
     }
@@ -72,5 +77,20 @@ public class CommandAvroMapper {
 
     private static UUID toUUID(UUID uuid) {
         return uuid;
+    }
+
+    private static GenericInfo toGenericInfo(com.example.worktaskservice.commands.GenericInfo avro) {
+        if (avro == null) {
+            return null;
+        }
+        return new GenericInfo(
+                avro.getName(), avro.getType(), avro.getDatacontenttype(), avro.getDataschema(),
+                toBytes(avro.getData()));
+    }
+
+    private static byte[] toBytes(ByteBuffer buffer) {
+        byte[] bytes = new byte[buffer.remaining()];
+        buffer.duplicate().get(bytes);
+        return bytes;
     }
 }

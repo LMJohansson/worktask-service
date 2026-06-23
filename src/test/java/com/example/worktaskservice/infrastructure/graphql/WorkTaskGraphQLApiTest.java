@@ -33,9 +33,13 @@ class WorkTaskGraphQLApiTest {
     private static final Source SOURCE = new Source("urn:source:work.tasks:worktask");
 
     private WorkTask newTask(String title, WorkTaskStatus status, UUID assigneeId, int priority) {
+        return newTask(title, status, assigneeId, priority, null);
+    }
+
+    private WorkTask newTask(String title, WorkTaskStatus status, UUID assigneeId, int priority, GenericInfo info) {
         var now = Instant.now();
         return WorkTask.reconstitute(UUID.randomUUID(), TYPE, new Subject(SUBJECT_TYPE, UUID.randomUUID().toString()), SOURCE,
-                title, null, priority, null, status, assigneeId, now, now);
+                title, null, priority, null, info, status, assigneeId, now, now);
     }
 
     private void persist(WorkTask... tasks) {
@@ -74,6 +78,31 @@ class WorkTaskGraphQLApiTest {
                 .body("data.workTask.title", equalTo("Process refund"))
                 .body("data.workTask.status", equalTo("DRAFT"))
                 .body("data.workTask.priority", equalTo(3));
+    }
+
+    @Test
+    void exposesGenericInfoWithBase64Data() {
+        // data bytes {1, 2, 3} encode to Base64 "AQID"
+        var info = new GenericInfo("refund-result", "urn:worktask-result:refund", "application/avro",
+                "http://registry/subjects/refund/versions/1", new byte[]{1, 2, 3});
+        var task = newTask("Completed refund", WorkTaskStatus.COMPLETED, null, 0, info);
+        persist(task);
+
+        String query = "{ workTask(id: \"" + task.id() + "\") "
+                + "{ genericInfo { name type datacontenttype dataschema dataBase64 } } }";
+
+        given()
+                .contentType(ContentType.JSON)
+                .body(graphQlBody(query))
+        .when()
+                .post("/graphql")
+        .then()
+                .statusCode(200)
+                .body("data.workTask.genericInfo.name", equalTo("refund-result"))
+                .body("data.workTask.genericInfo.type", equalTo("urn:worktask-result:refund"))
+                .body("data.workTask.genericInfo.datacontenttype", equalTo("application/avro"))
+                .body("data.workTask.genericInfo.dataschema", equalTo("http://registry/subjects/refund/versions/1"))
+                .body("data.workTask.genericInfo.dataBase64", equalTo("AQID"));
     }
 
     @Test

@@ -22,11 +22,23 @@ class WorkTaskStateMachineTest {
     private static final Subject      SUBJECT = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID().toString());
     private static final Source       SOURCE  = new Source("urn:source:billing.invoices:payment:42");
     private static final Instant      NOW     = Instant.now();
+    private static final GenericInfo  INFO    = new GenericInfo(
+            "refund-result", "urn:worktask-result:refund", "application/avro",
+            "http://registry/subjects/refund/versions/1", new byte[]{1, 2, 3});
+    private static final GenericInfo  INFO2   = new GenericInfo(
+            "refund-result", "urn:worktask-result:refund", "application/avro",
+            "http://registry/subjects/refund/versions/1", new byte[]{9, 9});
 
     private WorkTask taskInState(WorkTaskStatus status) {
         UUID assigneeId = status == WorkTaskStatus.DRAFT ? null : ASSIGNEE;
         return WorkTask.reconstitute(ID, TYPE, SUBJECT, SOURCE, "title", null, 1, NOW.plusSeconds(3600),
-                status, assigneeId, NOW, NOW);
+                null, status, assigneeId, NOW, NOW);
+    }
+
+    private WorkTask taskInStateWithInfo(WorkTaskStatus status, GenericInfo info) {
+        UUID assigneeId = status == WorkTaskStatus.DRAFT ? null : ASSIGNEE;
+        return WorkTask.reconstitute(ID, TYPE, SUBJECT, SOURCE, "title", null, 1, NOW.plusSeconds(3600),
+                info, status, assigneeId, NOW, NOW);
     }
 
     // -------------------------------------------------------------------------
@@ -37,7 +49,7 @@ class WorkTaskStateMachineTest {
 
         @Test void producesWorkTaskCreatedEvent() {
             Instant deadline = NOW.plusSeconds(3600);
-            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, SOURCE, "My Task", "desc", 5, deadline);
+            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, SOURCE, "My Task", "desc", 5, deadline, INFO);
             WorkTaskCreatedEvent event = WorkTask.create(cmd, NOW);
 
             assertInstanceOf(WorkTaskCreatedEvent.class, event);
@@ -51,10 +63,11 @@ class WorkTaskStateMachineTest {
             assertEquals("desc",    event.description());
             assertEquals(5,        event.priority());
             assertEquals(deadline, event.deadline());
+            assertEquals(INFO,     event.genericInfo());
         }
 
         @Test void applyCreateOnExistingTaskThrows() {
-            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, SOURCE, "x", null, 0, null);
+            var cmd = new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, SOURCE, "x", null, 0, null, null);
             var task = taskInState(WorkTaskStatus.DRAFT);
 
             var ex = assertThrows(InvalidStateTransitionException.class,
@@ -249,7 +262,7 @@ class WorkTaskStateMachineTest {
 
         @Test void fromInProgressProducesCompletedEvent() {
             var task = taskInState(WorkTaskStatus.IN_PROGRESS);
-            var cmd  = new CompleteWorkTaskCommand(ID, CORR);
+            var cmd  = new CompleteWorkTaskCommand(ID, CORR, null);
 
             var event = assertInstanceOf(WorkTaskCompletedEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.COMPLETED, task.status());
@@ -260,7 +273,7 @@ class WorkTaskStateMachineTest {
         @EnumSource(value = WorkTaskStatus.class, names = {"DRAFT", "ASSIGNED", "PAUSED", "COMPLETED", "ABORTED", "CANCELLED"})
         void fromNonInProgressThrows(WorkTaskStatus status) {
             var task = taskInState(status);
-            var cmd  = new CompleteWorkTaskCommand(ID, CORR);
+            var cmd  = new CompleteWorkTaskCommand(ID, CORR, null);
 
             assertThrows(InvalidStateTransitionException.class, () -> task.apply(cmd, NOW));
         }
@@ -276,7 +289,7 @@ class WorkTaskStateMachineTest {
         @EnumSource(value = WorkTaskStatus.class, names = {"ASSIGNED", "IN_PROGRESS", "PAUSED"})
         void fromActiveStateProducesAbortedEvent(WorkTaskStatus status) {
             var task = taskInState(status);
-            var cmd  = new AbortWorkTaskCommand(ID, CORR, "external dependency failed");
+            var cmd  = new AbortWorkTaskCommand(ID, CORR, "external dependency failed", null);
 
             var event = assertInstanceOf(WorkTaskAbortedEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.ABORTED, task.status());
@@ -287,7 +300,7 @@ class WorkTaskStateMachineTest {
         @EnumSource(value = WorkTaskStatus.class, names = {"DRAFT", "COMPLETED", "ABORTED", "CANCELLED"})
         void fromNonActiveStateThrows(WorkTaskStatus status) {
             var task = taskInState(status);
-            var cmd  = new AbortWorkTaskCommand(ID, CORR, null);
+            var cmd  = new AbortWorkTaskCommand(ID, CORR, null, null);
 
             var ex = assertThrows(InvalidStateTransitionException.class,
                     () -> task.apply(cmd, NOW));
@@ -305,7 +318,7 @@ class WorkTaskStateMachineTest {
         @EnumSource(value = WorkTaskStatus.class, names = {"DRAFT", "ASSIGNED", "IN_PROGRESS", "PAUSED"})
         void fromCancellableStateProducesCancelledEvent(WorkTaskStatus status) {
             var task = taskInState(status);
-            var cmd  = new CancelWorkTaskCommand(ID, CORR, "no longer needed");
+            var cmd  = new CancelWorkTaskCommand(ID, CORR, "no longer needed", null);
 
             var event = assertInstanceOf(WorkTaskCancelledEvent.class, task.apply(cmd, NOW));
             assertEquals(WorkTaskStatus.CANCELLED, task.status());
@@ -316,11 +329,55 @@ class WorkTaskStateMachineTest {
         @EnumSource(value = WorkTaskStatus.class, names = {"COMPLETED", "ABORTED", "CANCELLED"})
         void fromTerminalStateThrows(WorkTaskStatus status) {
             var task = taskInState(status);
-            var cmd  = new CancelWorkTaskCommand(ID, CORR, null);
+            var cmd  = new CancelWorkTaskCommand(ID, CORR, null, null);
 
             var ex = assertThrows(InvalidStateTransitionException.class,
                     () -> task.apply(cmd, NOW));
             assertEquals(status, ex.currentStatus());
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // GenericInfo (result envelope) — set at create, re-suppliable on terminal commands
+    // -------------------------------------------------------------------------
+
+    @Nested class GenericInfoResult {
+
+        @Test void completeWithResultSetsItOnEventAndTask() {
+            var task = taskInState(WorkTaskStatus.IN_PROGRESS);
+            var event = assertInstanceOf(WorkTaskCompletedEvent.class,
+                    task.apply(new CompleteWorkTaskCommand(ID, CORR, INFO), NOW));
+
+            assertEquals(INFO, event.genericInfo());
+            assertEquals(INFO, task.genericInfo());
+        }
+
+        @Test void completeWithoutResultPreservesCreateTimeInfo() {
+            var task = taskInStateWithInfo(WorkTaskStatus.IN_PROGRESS, INFO);
+            var event = assertInstanceOf(WorkTaskCompletedEvent.class,
+                    task.apply(new CompleteWorkTaskCommand(ID, CORR, null), NOW));
+
+            assertEquals(INFO, event.genericInfo());
+            assertEquals(INFO, task.genericInfo());
+        }
+
+        @Test void terminalResultReplacesCreateTimeInfo() {
+            var task = taskInStateWithInfo(WorkTaskStatus.IN_PROGRESS, INFO);
+            task.apply(new CompleteWorkTaskCommand(ID, CORR, INFO2), NOW);
+
+            assertEquals(INFO2, task.genericInfo());
+        }
+
+        @Test void abortAndCancelCarryResult() {
+            var aborted = taskInState(WorkTaskStatus.IN_PROGRESS);
+            var abortedEvent = assertInstanceOf(WorkTaskAbortedEvent.class,
+                    aborted.apply(new AbortWorkTaskCommand(ID, CORR, "failed", INFO), NOW));
+            assertEquals(INFO, abortedEvent.genericInfo());
+
+            var cancelled = taskInState(WorkTaskStatus.DRAFT);
+            var cancelledEvent = assertInstanceOf(WorkTaskCancelledEvent.class,
+                    cancelled.apply(new CancelWorkTaskCommand(ID, CORR, "nope", INFO), NOW));
+            assertEquals(INFO, cancelledEvent.genericInfo());
         }
     }
 

@@ -17,6 +17,7 @@ public final class WorkTask {
     private final String description;
     private final int priority;
     private final Instant deadline;
+    private GenericInfo genericInfo;
     private WorkTaskStatus status;
     private UUID assigneeId;
     private final Instant createdAt;
@@ -24,7 +25,7 @@ public final class WorkTask {
 
     private WorkTask(UUID id, WorkTaskType type, Subject subject, Source source,
                      String title, String description, int priority, Instant deadline,
-                     Instant createdAt) {
+                     GenericInfo genericInfo, Instant createdAt) {
         this.id = id;
         this.type = type;
         this.subject = subject;
@@ -33,6 +34,7 @@ public final class WorkTask {
         this.description = description;
         this.priority = priority;
         this.deadline = deadline;
+        this.genericInfo = genericInfo;
         this.status = WorkTaskStatus.DRAFT;
         this.assigneeId = null;
         this.createdAt = createdAt;
@@ -43,15 +45,16 @@ public final class WorkTask {
         return new WorkTaskCreatedEvent(
                 cmd.id(), cmd.correlationId(), now,
                 cmd.type(), cmd.subject(), cmd.source(), cmd.title(), cmd.description(),
-                cmd.priority(), cmd.deadline());
+                cmd.priority(), cmd.deadline(), cmd.genericInfo());
     }
 
     public static WorkTask reconstitute(UUID id, WorkTaskType type, Subject subject, Source source,
                                         String title, String description,
-                                        int priority, Instant deadline,
+                                        int priority, Instant deadline, GenericInfo genericInfo,
                                         WorkTaskStatus status, UUID assigneeId,
                                         Instant createdAt, Instant updatedAt) {
-        var task = new WorkTask(id, type, subject, source, title, description, priority, deadline, createdAt);
+        var task = new WorkTask(id, type, subject, source, title, description, priority, deadline,
+                genericInfo, createdAt);
         task.status = status;
         task.assigneeId = assigneeId;
         task.updatedAt = updatedAt;
@@ -83,21 +86,24 @@ public final class WorkTask {
             case CompleteWorkTaskCommand cmd -> {
                 requireStatus(cmd, WorkTaskStatus.IN_PROGRESS);
                 status = WorkTaskStatus.COMPLETED;
+                mergeGenericInfo(cmd.genericInfo());
                 updatedAt = now;
-                yield new WorkTaskCompletedEvent(id, cmd.correlationId(), now);
+                yield new WorkTaskCompletedEvent(id, cmd.correlationId(), now, genericInfo);
             }
             case AbortWorkTaskCommand cmd -> {
                 requireOneOf(cmd, WorkTaskStatus.ASSIGNED, WorkTaskStatus.IN_PROGRESS, WorkTaskStatus.PAUSED);
                 status = WorkTaskStatus.ABORTED;
+                mergeGenericInfo(cmd.genericInfo());
                 updatedAt = now;
-                yield new WorkTaskAbortedEvent(id, cmd.correlationId(), now);
+                yield new WorkTaskAbortedEvent(id, cmd.correlationId(), now, genericInfo);
             }
             case CancelWorkTaskCommand cmd -> {
                 requireOneOf(cmd, WorkTaskStatus.DRAFT, WorkTaskStatus.ASSIGNED,
                         WorkTaskStatus.IN_PROGRESS, WorkTaskStatus.PAUSED);
                 status = WorkTaskStatus.CANCELLED;
+                mergeGenericInfo(cmd.genericInfo());
                 updatedAt = now;
-                yield new WorkTaskCancelledEvent(id, cmd.correlationId(), now);
+                yield new WorkTaskCancelledEvent(id, cmd.correlationId(), now, genericInfo);
             }
             default -> throw new IllegalArgumentException("Unknown command type: " + command.getClass().getSimpleName());
         };
@@ -123,6 +129,13 @@ public final class WorkTask {
         }
     }
 
+    /** A command's genericInfo is applied only when supplied; null leaves the current value unchanged. */
+    private void mergeGenericInfo(GenericInfo incoming) {
+        if (incoming != null) {
+            this.genericInfo = incoming;
+        }
+    }
+
     private void requireStatus(Object cmd, WorkTaskStatus required) {
         if (status != required) {
             throw new InvalidStateTransitionException(status, cmd.getClass().getSimpleName());
@@ -144,6 +157,7 @@ public final class WorkTask {
     public String description() { return description; }
     public int priority() { return priority; }
     public Instant deadline() { return deadline; }
+    public GenericInfo genericInfo() { return genericInfo; }
     public WorkTaskStatus status() { return status; }
     public UUID assigneeId() { return assigneeId; }
     public Instant createdAt() { return createdAt; }

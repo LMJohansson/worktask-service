@@ -23,9 +23,13 @@ class PanacheWorkTaskRepositoryTest {
     PanacheWorkTaskRepository repository;
 
     private WorkTask newTask(WorkTaskStatus status, UUID assigneeId, String subjectId) {
+        return newTask(status, assigneeId, subjectId, null);
+    }
+
+    private WorkTask newTask(WorkTaskStatus status, UUID assigneeId, String subjectId, GenericInfo info) {
         var now = Instant.now();
         return WorkTask.reconstitute(UUID.randomUUID(), TYPE, new Subject(SUBJECT_TYPE, subjectId), SOURCE,
-                "title", null, 0, null, status, assigneeId, now, now);
+                "title", null, 0, null, info, status, assigneeId, now, now);
     }
 
     private static String randomSubjectId() {
@@ -81,5 +85,18 @@ class PanacheWorkTaskRepositoryTest {
         assertEquals(2, secondPage.items().size());
         assertEquals(0, firstPage.page());
         assertEquals(1, secondPage.page());
+    }
+
+    @Test
+    @TestTransaction
+    void roundTripsGenericInfo() {
+        var info = new GenericInfo("refund-result", "urn:worktask-result:refund", "application/avro",
+                "http://registry/subjects/refund/versions/1", new byte[]{1, 2, 3, 4});
+        var task = newTask(WorkTaskStatus.COMPLETED, null, randomSubjectId(), info);
+        repository.save(task);
+
+        var loaded = repository.find(task.id()).orElseThrow();
+
+        assertEquals(info, loaded.genericInfo());
     }
 }

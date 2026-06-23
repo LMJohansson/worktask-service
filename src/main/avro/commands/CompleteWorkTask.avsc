@@ -10,6 +10,21 @@
     {
       "name": "correlationId",
       "type": "UUID"
+    },
+    {
+      "name": "genericInfo",
+      "type": ["null", {
+        "type": "record",
+        "name": "GenericInfo",
+        "fields": [
+          {"name": "name", "type": "string"},
+          {"name": "type", "type": "string"},
+          {"name": "datacontenttype", "type": "string"},
+          {"name": "dataschema", "type": "string"},
+          {"name": "data", "type": "bytes"}
+        ]
+      }],
+      "default": null
     }
   ]
 }

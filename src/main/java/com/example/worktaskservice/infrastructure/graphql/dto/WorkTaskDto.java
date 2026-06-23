@@ -18,7 +18,8 @@ public record WorkTaskDto(
         WorkTaskStatus status,
         UUID assigneeId,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        GenericInfoDto genericInfo) {
 
     public static WorkTaskDto from(WorkTask task) {
         return new WorkTaskDto(
@@ -33,6 +34,7 @@ public record WorkTaskDto(
                 task.status(),
                 task.assigneeId(),
                 task.createdAt(),
-                task.updatedAt());
+                task.updatedAt(),
+                GenericInfoDto.from(task.genericInfo()));
     }
 }

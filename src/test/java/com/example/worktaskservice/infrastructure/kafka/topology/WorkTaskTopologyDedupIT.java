@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.util.Properties;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -81,9 +82,13 @@ class WorkTaskTopologyDedupIT {
             send(producer, subjectId, create(UUID.randomUUID(), subjectUrn, TYPE_B));
             awaitCount(subjectId, 2);
 
-            // 4. Cancel the first task (terminal) → releases the type-A slot for the subject.
+            // 4. Cancel the first task (terminal) → releases the type-A slot for the subject. The cancel
+            //    carries a genericInfo result, which must materialize on the read model.
             send(producer, subjectId, cancel(first));
             awaitStatus(first, WorkTaskStatus.CANCELLED);
+            var cancelled = QuarkusTransaction.requiringNew().call(() -> repository.find(first).orElseThrow());
+            assertEquals("cancel-result", cancelled.genericInfo().name());
+            assertArrayEquals(new byte[]{7, 7}, cancelled.genericInfo().data());
 
             // 5. Re-create type A now that the previous one is terminal → allowed (count becomes 3).
             send(producer, subjectId, create(UUID.randomUUID(), subjectUrn, TYPE_A));
@@ -129,6 +134,13 @@ class WorkTaskTopologyDedupIT {
         cmd.setId(id);
         cmd.setCorrelationId(UUID.randomUUID());
         cmd.setReason("done");
+        var info = new com.example.worktaskservice.commands.GenericInfo();
+        info.setName("cancel-result");
+        info.setType("urn:worktask-result:refund");
+        info.setDatacontenttype("application/avro");
+        info.setDataschema("http://registry/subjects/refund/versions/1");
+        info.setData(java.nio.ByteBuffer.wrap(new byte[]{7, 7}));
+        cmd.setGenericInfo(info);
         return cmd;
     }
 

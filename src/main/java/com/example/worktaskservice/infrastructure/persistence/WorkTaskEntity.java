@@ -37,6 +37,23 @@ public class WorkTaskEntity extends PanacheEntityBase {
 
     public Instant deadline;
 
+    // genericInfo — a CloudEvents-data-like result envelope; the whole group is null when absent,
+    // otherwise every field is populated (see domain GenericInfo).
+    @Column(name = "generic_info_name")
+    public String genericInfoName;
+
+    @Column(name = "generic_info_type")
+    public String genericInfoType;
+
+    @Column(name = "generic_info_datacontenttype")
+    public String genericInfoDatacontenttype;
+
+    @Column(name = "generic_info_dataschema")
+    public String genericInfoDataschema;
+
+    @Column(name = "generic_info_data")
+    public byte[] genericInfoData;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     public WorkTaskStatus status;

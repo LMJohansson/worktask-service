@@ -41,7 +41,7 @@ public class WorkTaskCommandHandler {
     private WorkTask applyCreated(WorkTaskCreatedEvent e, Instant now) {
         return WorkTask.reconstitute(
                 e.id(), e.type(), e.subject(), e.source(),
-                e.title(), e.description(), e.priority(), e.deadline(),
+                e.title(), e.description(), e.priority(), e.deadline(), e.genericInfo(),
                 com.example.worktaskservice.domain.model.WorkTaskStatus.DRAFT,
                 null, now, now);
     }

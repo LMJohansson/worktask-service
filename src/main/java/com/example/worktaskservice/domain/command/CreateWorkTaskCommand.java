@@ -1,5 +1,6 @@
 package com.example.worktaskservice.domain.command;
 
+import com.example.worktaskservice.domain.model.GenericInfo;
 import com.example.worktaskservice.domain.model.Source;
 import com.example.worktaskservice.domain.model.Subject;
 import com.example.worktaskservice.domain.model.WorkTaskType;
@@ -16,5 +17,6 @@ public record CreateWorkTaskCommand(
         String title,
         String description,
         int priority,
-        Instant deadline
+        Instant deadline,
+        GenericInfo genericInfo
 ) {}

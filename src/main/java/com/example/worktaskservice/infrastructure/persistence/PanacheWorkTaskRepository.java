@@ -68,6 +68,12 @@ public class PanacheWorkTaskRepository
         entity.assigneeId  = task.assigneeId();
         entity.createdAt   = task.createdAt();
         entity.updatedAt   = task.updatedAt();
+        var info = task.genericInfo();
+        entity.genericInfoName            = info != null ? info.name() : null;
+        entity.genericInfoType            = info != null ? info.type() : null;
+        entity.genericInfoDatacontenttype = info != null ? info.datacontenttype() : null;
+        entity.genericInfoDataschema      = info != null ? info.dataschema() : null;
+        entity.genericInfoData            = info != null ? info.data() : null;
         persistAndFlush(entity);
     }
 
@@ -77,7 +83,17 @@ public class PanacheWorkTaskRepository
                 new WorkTaskType(e.type),
                 new Subject(new SubjectType(e.subjectType), e.subjectId),
                 new Source(e.source),
-                e.title, e.description, e.priority, e.deadline, e.status, e.assigneeId,
+                e.title, e.description, e.priority, e.deadline, toGenericInfo(e),
+                e.status, e.assigneeId,
                 e.createdAt, e.updatedAt);
+    }
+
+    private static GenericInfo toGenericInfo(WorkTaskEntity e) {
+        if (e.genericInfoName == null) {
+            return null;
+        }
+        return new GenericInfo(
+                e.genericInfoName, e.genericInfoType, e.genericInfoDatacontenttype,
+                e.genericInfoDataschema, e.genericInfoData);
     }
 }

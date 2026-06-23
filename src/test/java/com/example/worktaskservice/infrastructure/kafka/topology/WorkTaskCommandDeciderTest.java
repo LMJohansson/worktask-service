@@ -26,14 +26,17 @@ class WorkTaskCommandDeciderTest {
     private static final Subject     SUBJECT = new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID().toString());
     private static final Source      SOURCE  = new Source("urn:source:billing.invoices:payment:42");
     private static final Instant     NOW     = Instant.now();
+    private static final GenericInfo INFO    = new GenericInfo(
+            "refund-result", "urn:worktask-result:refund", "application/avro",
+            "http://registry/subjects/refund/versions/1", new byte[]{1, 2, 3});
 
     private static CreateWorkTaskCommand create() {
-        return new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, SOURCE, "Process refund", null, 0, null);
+        return new CreateWorkTaskCommand(ID, CORR, TYPE, SUBJECT, SOURCE, "Process refund", null, 0, null, INFO);
     }
 
     private static WorkTask taskInState(WorkTaskStatus status) {
         UUID assigneeId = status == WorkTaskStatus.DRAFT ? null : UUID.randomUUID();
-        return WorkTask.reconstitute(ID, TYPE, SUBJECT, SOURCE, "title", null, 0, null,
+        return WorkTask.reconstitute(ID, TYPE, SUBJECT, SOURCE, "title", null, 0, null, null,
                 status, assigneeId, NOW, NOW);
     }
 
@@ -49,6 +52,7 @@ class WorkTaskCommandDeciderTest {
         assertEquals(WorkTaskStatus.DRAFT, accepted.state().status());
         assertEquals(SOURCE, accepted.state().source());
         assertEquals(ID, accepted.state().id());
+        assertEquals(INFO, accepted.state().genericInfo());
     }
 
     @Test
@@ -75,7 +79,7 @@ class WorkTaskCommandDeciderTest {
 
     @Test
     void releasesIndexOnComplete() {
-        var outcome = decide(new CompleteWorkTaskCommand(ID, CORR), ID, taskInState(WorkTaskStatus.IN_PROGRESS), false, NOW);
+        var outcome = decide(new CompleteWorkTaskCommand(ID, CORR, null), ID, taskInState(WorkTaskStatus.IN_PROGRESS), false, NOW);
 
         var accepted = assertInstanceOf(Accepted.class, outcome);
         assertEquals(IndexUpdate.REMOVE, accepted.index());
@@ -85,7 +89,7 @@ class WorkTaskCommandDeciderTest {
     @ParameterizedTest
     @EnumSource(value = WorkTaskStatus.class, names = {"DRAFT", "ASSIGNED", "IN_PROGRESS", "PAUSED"})
     void releasesIndexOnCancelFromAnyActiveState(WorkTaskStatus status) {
-        var outcome = decide(new CancelWorkTaskCommand(ID, CORR, "no longer needed"), ID, taskInState(status), false, NOW);
+        var outcome = decide(new CancelWorkTaskCommand(ID, CORR, "no longer needed", null), ID, taskInState(status), false, NOW);
 
         var accepted = assertInstanceOf(Accepted.class, outcome);
         assertEquals(IndexUpdate.REMOVE, accepted.index());

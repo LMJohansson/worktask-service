@@ -21,7 +21,7 @@ class CloudEventHeadersTest {
                 new WorkTaskType("urn:worktask-type:billing.invoices:payment:process-refund"),
                 new Subject(new SubjectType("urn:subject-type:billing.invoices:payment:invoice"), UUID.randomUUID().toString()),
                 new Source("urn:source:work.tasks:worktask"),
-                "title", null, 0, null, WorkTaskStatus.ASSIGNED, null, now, now);
+                "title", null, 0, null, null, WorkTaskStatus.ASSIGNED, null, now, now);
     }
 
     @Test
